@@ -22,5 +22,5 @@ Place raw files under `data/raw/` (already in this repo for demo). Processed out
 ## Tech Stack
 Python, Dash, Plotly, GeoPandas, Shapely, Pandas.
 
-![App Screenshot](assets/screenshot.png)
+![App Screenshot](assets/screenshot.PNG)
 
