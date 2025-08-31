@@ -11,10 +11,13 @@ Interactive Dash + Plotly app with GeoPandas/Shapely maps to explore BART riders
 - Geospatial visualizations with GeoPandas and Shapely
 
 ## Quickstart (Windows)
-1. python -m venv .venv
-2. .\.venv\Scripts\Activate
-3. pip install -r requirements.txt
-4. python app.py
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate
+pip install -r requirements.txt
+python app.py
+```
 
 App runs at http://127.0.0.1:8050/
 
