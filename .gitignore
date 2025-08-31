@@ -1,0 +1,16 @@
+﻿__pycache__/
+*.pyc
+.venv/
+venv/
+.DS_Store
+Thumbs.db
+.ipynb_checkpoints/
+
+# data
+data/raw/*
+!data/raw/.gitkeep
+data/processed/*
+!data/processed/.gitkeep
+
+# assets binaries (keep images, ignore design source if any)
+assets/*.psd
