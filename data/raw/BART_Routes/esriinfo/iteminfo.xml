@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ESRI_ItemInformation Culture='en-US'>
+<name>BART_Routes</name>
+<guid>16BF7095-DF80-4C7E-A1B4-15CC72E39550</guid>
+<version>1.0</version>
+<created></created>
+<modified></modified>
+<catalogpath></catalogpath>
+<snippet>bartroutes</snippet>
+<description></description>
+<summary>bartroutes</summary>
+<title>BART Routes</title>
+<tags>bartroutes</tags>
+<type>Service Definition</type>
+<typekeywords>
+<typekeyword>ArcGIS</typekeyword>
+<typekeyword>Service Definition</typekeyword>
+<typekeyword>.sd</typekeyword>
+</typekeywords>
+<thumbnail>thumbnail/thumbnail.png</thumbnail>
+<documentation></documentation>
+<url></url>
+<extent>
+<xmin>-122.468911907</xmin>
+<ymin>37.3684782890001</ymin>
+<xmax>-121.780433365</xmax>
+<ymax>38.018936631</ymax>
+</extent>
+<spatialreference>GCS_WGS_1984</spatialreference>
+<minScale>0</minScale>
+<maxScale>1.7976931348623157e+308</maxScale>
+<datalastModifiedTime></datalastModifiedTime>
+<accessinformation></accessinformation>
+<licenseinfo></licenseinfo>
+</ESRI_ItemInformation>
