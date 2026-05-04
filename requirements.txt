@@ -6,3 +6,4 @@ dash-bootstrap-components
 geopandas
 shapely
 openpyxl
+duckdb

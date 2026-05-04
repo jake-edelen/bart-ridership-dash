@@ -7,6 +7,7 @@ turning the Dash file back into a preprocessing script.
 """
 
 # region Imports
+from calendar import month_name
 from functools import lru_cache
 
 import dash
@@ -18,7 +19,12 @@ from dash import dcc, html
 from dash.dependencies import Input, Output, State
 from shapely.geometry import LineString, MultiLineString
 
-from src.data_loader import load_app_data
+from src.data_loader import (
+    attach_station_ridership,
+    get_available_ridership_periods,
+    load_station_ridership_for_period,
+    load_app_data,
+)
 from src.route_builder import build_current_routes
 # endregion
 
@@ -26,12 +32,15 @@ from src.route_builder import build_current_routes
 # region Runtime Data
 AVAILABLE_ROUTE_YEARS = tuple(range(2018, 2026))
 DEFAULT_ROUTE_YEAR = 2025
+DEFAULT_RIDERSHIP_YEAR = 2018
+DEFAULT_RIDERSHIP_MONTH = 1
 
 app_data = load_app_data()
 stations_gdf = app_data.stations_gdf
 raw_routes_gdf = app_data.raw_routes_gdf
 station_ridership = app_data.station_ridership
 station_mapping = app_data.station_mapping
+available_ridership_periods = get_available_ridership_periods()
 
 year_options = [
     {"label": str(year), "value": year}
@@ -56,8 +65,49 @@ def _route_options_for_routes(routes_gdf):
     return options
 
 
+def _ridership_month_options_for_year(year):
+    """Build month dropdown options for a selected ridership year."""
+    months = [
+        month
+        for period_year, month in available_ridership_periods
+        if period_year == int(year)
+    ]
+    return [
+        {"label": month_name[month], "value": month}
+        for month in sorted(months)
+    ]
+
+
+@lru_cache(maxsize=None)
+def _station_ridership_for_period(year, month):
+    """Return station-level ridership for the selected monthly period."""
+    return load_station_ridership_for_period(int(year), int(month))
+
+
+def _stations_for_ridership_period(year, month):
+    """Return station geometry with ridership values for one monthly period."""
+    base_stations = stations_gdf.drop(
+        columns=["Entry Station", "Ridership", "Full Station Name"],
+        errors="ignore",
+    )
+    return attach_station_ridership(
+        base_stations,
+        _station_ridership_for_period(year, month),
+    )
+
+
+def _ridership_period_label(year, month):
+    """Return a readable month/year label for figure titles and hovers."""
+    return f"{month_name[int(month)]} {int(year)}"
+
+
 route_to_gdf = _routes_for_year(DEFAULT_ROUTE_YEAR)
 route_options = _route_options_for_routes(route_to_gdf)
+
+ridership_year_options = [
+    {"label": str(year), "value": year}
+    for year in sorted({year for year, _ in available_ridership_periods})
+]
 # endregion
 
 
@@ -117,7 +167,7 @@ def create_layout():
                             html.P("This Dash App displays BART routes with interactive elements."),
                             html.P(
                                 "The dropdown menus control displayed routes and compare "
-                                "January 2018 ridership by station."
+                                "monthly station ridership."
                             ),
                             html.P(
                                 "Ridership intensity is mapped using marker size and color, "
@@ -161,6 +211,22 @@ def create_layout():
                                 id="route-dropdown",
                                 options=route_options,
                                 value="all",
+                                clearable=False,
+                            ),
+                            html.Br(),
+                            html.Label("Select Ridership Year:"),
+                            dcc.Dropdown(
+                                id="ridership-year-dropdown",
+                                options=ridership_year_options,
+                                value=DEFAULT_RIDERSHIP_YEAR,
+                                clearable=False,
+                            ),
+                            html.Br(),
+                            html.Label("Select Ridership Month:"),
+                            dcc.Dropdown(
+                                id="ridership-month-dropdown",
+                                options=_ridership_month_options_for_year(DEFAULT_RIDERSHIP_YEAR),
+                                value=DEFAULT_RIDERSHIP_MONTH,
                                 clearable=False,
                             ),
                             html.Br(),
@@ -218,6 +284,7 @@ def create_layout():
 
 app = dash.Dash(__name__)
 app.layout = create_layout
+app.validation_layout = create_layout()
 # endregion
 
 
@@ -241,6 +308,22 @@ def update_route_dropdown(selected_year, selected_route):
 
 @app.callback(
     [
+        Output("ridership-month-dropdown", "options"),
+        Output("ridership-month-dropdown", "value"),
+    ],
+    [Input("ridership-year-dropdown", "value")],
+    [State("ridership-month-dropdown", "value")],
+)
+def update_ridership_month_dropdown(selected_year, selected_month):
+    """Refresh month choices so they match the selected ridership year."""
+    options = _ridership_month_options_for_year(selected_year)
+    valid_months = {option["value"] for option in options}
+    value = selected_month if selected_month in valid_months else options[0]["value"]
+    return options, value
+
+
+@app.callback(
+    [
         Output("bart-map-colored", "figure"),
         Output("bart-map-black", "figure"),
         Output("ridership-bar-chart", "figure"),
@@ -248,16 +331,27 @@ def update_route_dropdown(selected_year, selected_route):
     [
         Input("route-year-dropdown", "value"),
         Input("route-dropdown", "value"),
+        Input("ridership-year-dropdown", "value"),
+        Input("ridership-month-dropdown", "value"),
         Input("station-1-dropdown", "value"),
         Input("station-2-dropdown", "value"),
     ],
 )
-def update_maps(selected_year, selected_route, station1, station2):
+def update_maps(
+    selected_year,
+    selected_route,
+    ridership_year=None,
+    ridership_month=None,
+    station1=None,
+    station2=None,
+):
     """Update route maps and ridership chart from selected UI filters.
 
     Args:
         selected_year: Service-pattern year used for route geometry display.
         selected_route: Route name from the route dropdown, or `"all"`.
+        ridership_year: Year used for station ridership display.
+        ridership_month: Month used for station ridership display.
         station1: Optional full station name from the first station dropdown.
         station2: Optional full station name from the second station dropdown.
 
@@ -265,27 +359,33 @@ def update_maps(selected_year, selected_route, station1, station2):
         A tuple of Plotly figures for the colored route map, ridership map, and
         ridership bar chart.
     """
+    ridership_year = ridership_year or DEFAULT_RIDERSHIP_YEAR
+    ridership_month = ridership_month or DEFAULT_RIDERSHIP_MONTH
+    period_label = _ridership_period_label(ridership_year, ridership_month)
+    selected_station_ridership = _station_ridership_for_period(ridership_year, ridership_month)
+    stations_for_period = _stations_for_ridership_period(ridership_year, ridership_month)
     reverse_mapping = {v: k for k, v in station_mapping.items()}
 
     if station1 and station2:
         station1_abbr = reverse_mapping.get(station1)
         station2_abbr = reverse_mapping.get(station2)
-        filtered_stations = stations_gdf[stations_gdf["Name"].isin([station1, station2])]
-        filtered_ridership = station_ridership[
-            station_ridership["Entry Station"].isin([station1_abbr, station2_abbr])
+        filtered_stations = stations_for_period[stations_for_period["Name"].isin([station1, station2])]
+        filtered_ridership = selected_station_ridership[
+            selected_station_ridership["Entry Station"].isin([station1_abbr, station2_abbr])
         ]
     else:
-        filtered_stations = stations_gdf
-        filtered_ridership = station_ridership
+        filtered_stations = stations_for_period
+        filtered_ridership = selected_station_ridership
 
     selected_routes_gdf = _routes_for_year(selected_year)
-    fig_colored = _build_colored_route_map(selected_routes_gdf)
+    fig_colored = _build_colored_route_map(selected_routes_gdf, selected_year)
     fig_black = _build_ridership_route_map(
         selected_routes_gdf,
         selected_route,
         filtered_stations,
+        period_label,
     )
-    bar_fig = _build_ridership_bar_chart(filtered_ridership)
+    bar_fig = _build_ridership_bar_chart(filtered_ridership, period_label)
 
     return fig_colored, fig_black, bar_fig
 # endregion
@@ -320,7 +420,7 @@ def _add_route_line_traces(fig, routes_gdf, line_width, line_color=None):
             )
         )                                                                             
 
-def _build_colored_route_map(routes_gdf):
+def _build_colored_route_map(routes_gdf, selected_year=None):
     """Create the bottom map with route-offset lines in route colors."""
     fig_colored = go.Figure()
     visible_routes_gdf = _offset_colored_route_geometries(routes_gdf)
@@ -334,17 +434,18 @@ def _build_colored_route_map(routes_gdf):
             marker=dict(size=6, color="black"),
             text=stations_gdf["Name"],
             textposition="top right",
-            hoverinfo="text",
+            hovertemplate="%{text}<extra></extra>",
             name="BART Stations",
             showlegend=True, 
         )
     )
 
+    title_year = f"{selected_year} " if selected_year else ""
     fig_colored.update_layout(
         map_style="open-street-map",
         map_zoom=9,
         map_center={"lat": 37.7749, "lon": -122.4194},
-        margin=dict(l=0, r=0, t=0, b=0),
+        margin=dict(l=0, r=0, t=58, b=0),
         legend=dict(
             **ROUTE_LEGEND,
             x=1.01,
@@ -394,7 +495,23 @@ def _iter_plot_lines(geometry):
         raise TypeError(f"Unsupported plot geometry type: {type(geometry)!r}")
 
 
-def _build_ridership_route_map(routes_gdf, selected_route, filtered_stations):
+def _scale_ridership_marker_sizes(ridership_values, min_size=5, max_size=34):
+    """Scale station marker sizes by relative ridership without runaway circles."""
+    ridership = pd.to_numeric(ridership_values, errors="coerce").fillna(0)
+    max_ridership = ridership.max()
+
+    if max_ridership <= 0:
+        return pd.Series(min_size, index=ridership.index)
+
+    return min_size + (ridership / max_ridership).pow(0.5) * (max_size - min_size)
+
+
+def _build_ridership_route_map(
+    routes_gdf,
+    selected_route,
+    filtered_stations,
+    ridership_period_label="January 2018",
+):
     """Create the top map with black routes and ridership-scaled station markers.
 
     Args:
@@ -408,7 +525,12 @@ def _build_ridership_route_map(routes_gdf, selected_route, filtered_stations):
         if selected_route == "all"
         else routes_gdf[routes_gdf["route"] == selected_route]
     )
-    _add_route_line_traces(fig_black, filtered_routes, line_width=2, line_color="black")
+    _add_route_line_traces(
+        fig_black,
+        filtered_routes,
+        line_width=2,
+        line_color="rgba(35, 35, 35, 0.45)",
+    )
 
     fig_black.add_trace(
         go.Scattermap(
@@ -416,20 +538,21 @@ def _build_ridership_route_map(routes_gdf, selected_route, filtered_stations):
             lon=filtered_stations["lon"],
             mode="markers+text",
             marker=dict(
-                size=filtered_stations["Ridership"] / 1000 + 3,
+                size=_scale_ridership_marker_sizes(filtered_stations["Ridership"]),
                 color=filtered_stations["Ridership"],
                 colorscale="YlOrRd",
                 showscale=True,
                 colorbar=dict(
-                    title="Ridership",
+                    title=f"{ridership_period_label}<br>Ridership",
                     x=0,
                     xanchor="right",
                     thickness=20,
                 ),
             ),
             text=filtered_stations["Name"],
+            customdata=filtered_stations["Ridership"],
             textposition="top right",
-            hoverinfo="text",
+            hovertemplate=f"%{{text}}<br>{ridership_period_label} ridership: %{{customdata:,.0f}}<extra></extra>",
             name="BART Stations",
             showlegend=False,
         )
@@ -439,7 +562,13 @@ def _build_ridership_route_map(routes_gdf, selected_route, filtered_stations):
         map_style="open-street-map",
         map_zoom=9,
         map_center={"lat": 37.7749, "lon": -122.4194},
-        margin=dict(l=0, r=300, t=0, b=0),
+        title=dict(
+            text=f"Station Ridership Map ({ridership_period_label})",
+            x=0.5,
+            xanchor="center",
+            font=dict(size=16),
+        ),
+        margin=dict(l=0, r=300, t=42, b=0),
         legend=dict(
             **ROUTE_LEGEND,
             x=1.01,
@@ -451,7 +580,7 @@ def _build_ridership_route_map(routes_gdf, selected_route, filtered_stations):
     return fig_black
 
 
-def _build_ridership_bar_chart(filtered_ridership):
+def _build_ridership_bar_chart(filtered_ridership, ridership_period_label="January 2018"):
     """Create the station ridership summary bar chart.
 
     Args:
@@ -473,12 +602,12 @@ def _build_ridership_bar_chart(filtered_ridership):
 
     if len(chart_data) > 2:
         chart_data = chart_data.nlargest(10, "Ridership").sort_values("Ridership")
-        title = "Top 10 Stations by January 2018 Ridership"
+        title = f"Top 10 Stations by {ridership_period_label} Ridership"
     else:
         chart_data = chart_data.sort_values("Ridership")
-        title = "Selected Station Ridership (January 2018)"
+        title = f"Selected Station Ridership ({ridership_period_label})"
 
-    return px.bar(
+    bar_fig = px.bar(
         chart_data,
         x="Ridership",
         y="Station",
@@ -489,6 +618,13 @@ def _build_ridership_bar_chart(filtered_ridership):
         template="plotly_white",
         orientation="h",
     )
+    bar_fig.update_layout(
+        xaxis_title=f"{ridership_period_label} Ridership",
+        yaxis_title="Station",
+        coloraxis_colorbar=dict(title="Ridership"),
+        margin=dict(l=120, r=20, t=58, b=45),
+    )
+    return bar_fig
 # endregion
 
 

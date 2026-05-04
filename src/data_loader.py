@@ -8,6 +8,7 @@ hourly filters, multi-year analysis, and forecasting work.
 
 # region Imports
 from dataclasses import dataclass
+import re
 from pathlib import Path
 
 import geopandas as gpd
@@ -20,6 +21,7 @@ from .config import (
     HOURLY_OD_2018_SAMPLE_CSV,
     RAW,
     RIDERSHIP_2018_DIR,
+    PROCESSED,
 )
 from .route_builder import build_current_routes
 from .station_mapping import STATION_MAPPING, normalize_station_code
@@ -132,13 +134,48 @@ def load_monthly_ridership_long(file_path):
     Returns:
         DataFrame with `Exit Station`, `Entry Station`, and `Ridership` columns.
     """
-    df_ridership = pd.read_excel(file_path, sheet_name=0, header=None)
+    excel_file = pd.ExcelFile(file_path)
+    try:
+        target_sheet = _select_total_trips_sheet(excel_file.sheet_names)
+    finally:
+        excel_file.close()
 
-    entry_stations = [_normalize_station_label(name) for name in df_ridership.iloc[1, 1:].tolist()]
-    exit_stations = [_normalize_station_label(name) for name in df_ridership.iloc[2:, 0].tolist()]
+    df_ridership = pd.read_excel(file_path, sheet_name=target_sheet, header=None)
+    header_row = _find_station_header_row(df_ridership)
+    if header_row is None:
+        raise ValueError(f"Could not find station header row in {file_path} [{target_sheet}].")
+
+    raw_entry_stations = [
+        _normalize_station_label(name)
+        for name in df_ridership.iloc[header_row, 1:].tolist()
+    ]
+    entry_columns = [
+        (column_index, station_code)
+        for column_index, station_code in enumerate(raw_entry_stations, start=1)
+        if station_code in STATION_MAPPING
+    ]
+    exit_station_labels = [
+        _normalize_station_label(name)
+        for name in df_ridership.iloc[header_row + 1:, 0].tolist()
+    ]
+    valid_exit_rows = [
+        station_code in STATION_MAPPING
+        for station_code in exit_station_labels
+    ]
+
+    entry_stations = [station_code for _, station_code in entry_columns]
+    exit_stations = [
+        station_code
+        for station_code, is_valid_station in zip(exit_station_labels, valid_exit_rows)
+        if is_valid_station
+    ]
     entry_stations = _make_unique(entry_stations)
 
-    df_ridership_clean = df_ridership.iloc[2:, 1:].copy()
+    df_ridership_clean = df_ridership.iloc[
+        header_row + 1:,
+        [column_index for column_index, _ in entry_columns],
+    ].copy()
+    df_ridership_clean = df_ridership_clean.loc[valid_exit_rows].copy()
     df_ridership_clean.columns = entry_stations
     df_ridership_clean.insert(0, "Exit Station", exit_stations)
     df_ridership_clean.iloc[:, 1:] = df_ridership_clean.iloc[:, 1:].apply(
@@ -179,9 +216,93 @@ def summarize_station_ridership(df_ridership_long):
         .sum()
         .reset_index()
     )
-    station_ridership = station_ridership[station_ridership["Entry Station"] != "Exits"]
+    station_ridership = station_ridership[
+        station_ridership["Entry Station"].isin(STATION_MAPPING)
+    ]
     station_ridership["Full Station Name"] = station_ridership["Entry Station"].map(STATION_MAPPING)
     return station_ridership
+
+
+def build_monthly_station_ridership_summaries(raw_root=RAW):
+    """Aggregate every discovered monthly workbook to station-level summaries.
+
+    Args:
+        raw_root: Directory containing `ridership_*` raw workbook folders.
+
+    Returns:
+        DataFrame with one row per year/month/entry-station combination.
+    """
+    monthly_summaries = []
+
+    for workbook in discover_ridership_workbooks(raw_root):
+        year, month = parse_ridership_period(workbook)
+        station_summary = summarize_station_ridership(load_monthly_ridership_long(workbook))
+        station_summary.insert(0, "Month", month)
+        station_summary.insert(0, "Year", year)
+        station_summary["Period"] = f"{year}-{month:02d}"
+        station_summary["Source File"] = str(workbook)
+        monthly_summaries.append(station_summary)
+
+    if not monthly_summaries:
+        return pd.DataFrame(
+            columns=[
+                "Year",
+                "Month",
+                "Entry Station",
+                "Ridership",
+                "Full Station Name",
+                "Period",
+                "Source File",
+            ]
+        )
+
+    return pd.concat(monthly_summaries, ignore_index=True)
+
+
+def write_monthly_station_ridership_summaries(output_path=None, raw_root=RAW):
+    """Write processed monthly station ridership summaries to CSV.
+
+    Args:
+        output_path: Optional destination. Defaults to
+            `data/processed/station_ridership_monthly_summary.csv`.
+        raw_root: Directory containing raw ridership workbooks.
+
+    Returns:
+        Path to the written summary CSV.
+    """
+    output_path = Path(output_path) if output_path else monthly_station_summary_path()
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    build_monthly_station_ridership_summaries(raw_root).to_csv(output_path, index=False)
+    return output_path
+
+
+def monthly_station_summary_path():
+    """Return the standard processed monthly ridership summary path."""
+    return PROCESSED / "station_ridership_monthly_summary.csv"
+
+
+def load_station_ridership_for_period(year, month, processed_path=None, raw_root=RAW):
+    """Load station ridership for one selected year/month.
+
+    The app prefers the processed summary CSV when it exists, then falls back to
+    parsing the matching raw workbook. This keeps startup light while allowing
+    future production runs to precompute all monthly summaries.
+    """
+    year = int(year)
+    month = int(month)
+    processed_path = Path(processed_path) if processed_path else monthly_station_summary_path()
+
+    if processed_path.exists():
+        monthly_summary = pd.read_csv(processed_path)
+        selected_summary = monthly_summary[
+            (monthly_summary["Year"].astype(int) == year)
+            & (monthly_summary["Month"].astype(int) == month)
+        ].copy()
+        if not selected_summary.empty:
+            return _normalize_station_summary_columns(selected_summary)
+
+    workbook = find_ridership_workbook(year, month, raw_root)
+    return summarize_station_ridership(load_monthly_ridership_long(workbook))
 
 
 def attach_station_ridership(stations_gdf, station_ridership):
@@ -228,7 +349,41 @@ def load_hourly_origin_destination(path=None):
 # region Ridership Workbook Discovery
 def discover_ridership_workbooks(raw_root=RAW):
     """Return all monthly ridership workbooks discovered under `data/raw`."""
-    return tuple(sorted(Path(raw_root).glob("ridership*/Ridership_*.xlsx")))
+    raw_root = Path(raw_root)
+    workbooks = set(raw_root.glob("ridership*/Ridership_*.xlsx"))
+    workbooks.update(raw_root.glob("Ridership_*.xlsx"))
+    return tuple(sorted(workbooks))
+
+
+def get_available_ridership_periods(raw_root=RAW):
+    """Return discovered ridership periods as `(year, month)` tuples."""
+    return tuple(
+        sorted(
+            {
+                parse_ridership_period(workbook)
+                for workbook in discover_ridership_workbooks(raw_root)
+            }
+        )
+    )
+
+
+def find_ridership_workbook(year, month, raw_root=RAW):
+    """Find the raw workbook matching one ridership year/month."""
+    requested_period = (int(year), int(month))
+
+    for workbook in discover_ridership_workbooks(raw_root):
+        if parse_ridership_period(workbook) == requested_period:
+            return workbook
+
+    raise FileNotFoundError(f"No ridership workbook found for {year}-{int(month):02d}.")
+
+
+def parse_ridership_period(path):
+    """Extract `(year, month)` from a `Ridership_YYYYMM.xlsx` file path."""
+    match = re.search(r"Ridership_(\d{4})(\d{2})\.xlsx$", Path(path).name)
+    if not match:
+        raise ValueError(f"Could not infer ridership period from {path}.")
+    return int(match.group(1)), int(match.group(2))
 
 
 def extract_ridership_station_codes(file_path, sheet_name=None):
@@ -309,6 +464,21 @@ def _year_from_ridership_path(path):
 
 
 # region Helpers
+def _normalize_station_summary_columns(station_summary):
+    """Return period-filtered summary rows with runtime-compatible columns."""
+    station_summary = station_summary.copy()
+    station_summary["Entry Station"] = station_summary["Entry Station"].astype(str)
+    station_summary["Ridership"] = pd.to_numeric(
+        station_summary["Ridership"],
+        errors="coerce",
+    ).fillna(0)
+
+    if "Full Station Name" not in station_summary.columns:
+        station_summary["Full Station Name"] = station_summary["Entry Station"].map(STATION_MAPPING)
+
+    return station_summary[["Entry Station", "Ridership", "Full Station Name"]]
+
+
 def _normalize_station_label(name):
     """Normalize station labels from the Excel matrix header cells."""
     if isinstance(name, (int, float)) and not pd.isna(name):

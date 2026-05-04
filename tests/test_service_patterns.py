@@ -9,12 +9,17 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.data_loader import (
+    build_monthly_station_ridership_summaries,
     discover_ridership_workbooks,
     extract_ridership_station_codes,
+    find_ridership_workbook,
+    get_available_ridership_periods,
     get_ridership_station_codes_by_year,
+    load_station_ridership_for_period,
     load_monthly_ridership_long,
     load_raw_routes,
     load_stations,
+    parse_ridership_period,
     summarize_station_ridership,
 )
 from src.config import RIDERSHIP_2018_DIR
@@ -123,6 +128,43 @@ class RidershipWorkbookTests(unittest.TestCase):
         codes_by_year = get_ridership_station_codes_by_year()
         self.assertIn("2022", codes_by_year)
         self.assertTrue({"PC", "AN", "ML", "BE"} <= set(codes_by_year["2022"]))
+
+    def test_available_ridership_periods_include_project_range(self):
+        periods = set(get_available_ridership_periods())
+
+        self.assertIn((2018, 1), periods)
+        self.assertIn((2025, 5), periods)
+
+    def test_ridership_period_parser_and_finder(self):
+        workbook = find_ridership_workbook(2025, 5)
+
+        self.assertEqual((2025, 5), parse_ridership_period(workbook))
+
+    def test_load_station_ridership_for_selected_period(self):
+        station_summary = load_station_ridership_for_period(2025, 5)
+
+        self.assertFalse(station_summary.empty)
+        self.assertTrue({"Entry Station", "Ridership", "Full Station Name"} <= set(station_summary.columns))
+        self.assertTrue({"ML", "BE"} <= set(station_summary["Entry Station"]))
+
+    def test_ridership_parser_excludes_total_rows_and_columns(self):
+        station_summary = summarize_station_ridership(
+            load_monthly_ridership_long("data/raw/ridership_OD_2025/Ridership_202505.xlsx")
+        )
+        station_codes = set(station_summary["Entry Station"].astype(str))
+
+        self.assertNotIn("nan", station_codes)
+        self.assertNotIn("Grand Total", station_codes)
+        self.assertAlmostEqual(4670575, float(station_summary["Ridership"].sum()))
+
+    def test_monthly_summary_builder_adds_period_columns(self):
+        station_summary = build_monthly_station_ridership_summaries(
+            raw_root=RIDERSHIP_2018_DIR.parent / "ridership_2018"
+        )
+
+        self.assertFalse(station_summary.empty)
+        self.assertEqual({2018}, set(station_summary["Year"]))
+        self.assertTrue({1, 12} <= set(station_summary["Month"]))
 
 
 class GeometryCoverageTests(unittest.TestCase):
@@ -250,11 +292,47 @@ class DashRouteYearTests(unittest.TestCase):
 
         self.assertEqual("Berryessa/North San José to Richmond", value)
 
+    def test_route_dropdown_includes_airport_connector(self):
+        for year in (2018, 2025):
+            options, value = self.dash_app.update_route_dropdown(year, "Coliseum to Oakland Airport")
+            option_values = {option["value"] for option in options}
+
+            self.assertIn("Coliseum to Oakland Airport", option_values)
+            self.assertEqual("Coliseum to Oakland Airport", value)
+
+    def test_ridership_month_dropdown_matches_selected_year(self):
+        options, value = self.dash_app.update_ridership_month_dropdown(2025, 13)
+        option_values = {option["value"] for option in options}
+
+        self.assertIn(5, option_values)
+        self.assertNotIn(13, option_values)
+        self.assertEqual(1, value)
+
     def test_map_callback_returns_figures_for_selected_year(self):
-        figures = self.dash_app.update_maps(2025, "all", None, None)
+        figures = self.dash_app.update_maps(2025, "all", 2018, 1, None, None)
 
         self.assertEqual(3, len(figures))
         self.assertTrue(all(figure.__class__.__name__ == "Figure" for figure in figures))
+
+    def test_map_callback_uses_selected_ridership_period(self):
+        _, ridership_map, bar_chart = self.dash_app.update_maps(2025, "all", 2025, 5, None, None)
+
+        self.assertEqual("Station Ridership Map (May 2025)", ridership_map.layout.title.text)
+        self.assertEqual("Top 10 Stations by May 2025 Ridership", bar_chart.layout.title.text)
+
+    def test_ridership_map_marker_sizes_are_capped(self):
+        routes_gdf = self.dash_app._routes_for_year(2025)
+        stations_gdf = self.dash_app._stations_for_ridership_period(2025, 5)
+        figure = self.dash_app._build_ridership_route_map(
+            routes_gdf,
+            "all",
+            stations_gdf,
+            "May 2025",
+        )
+        station_trace = figure.data[-1]
+
+        self.assertLessEqual(max(station_trace.marker.size), 34)
+        self.assertGreaterEqual(min(station_trace.marker.size), 5)
 
     def test_route_legend_has_one_clickable_item_per_route(self):
         routes_gdf = self.dash_app._routes_for_year(2025)

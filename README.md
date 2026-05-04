@@ -36,3 +36,6 @@ Raw source files belong under `data/raw/`, which is ignored by Git because some 
 Python, Dash, Plotly, GeoPandas, Shapely, Pandas.
 
 
+## Notes
+January 2018 workbook lacks a monthly Total Trips sheet, so the pipeline uses the higher-granularity 2018 hourly OD CSV as a source-specific fallback. 
+It aggregates hourly OD rows by Origin to match the station-entry metric used for all other monthly workbooks.
