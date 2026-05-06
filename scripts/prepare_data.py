@@ -16,7 +16,11 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.config import BART_ROUTES_GDB, BART_STATIONS_DIR, PROCESSED  # noqa: E402
-from src.data_loader import write_monthly_station_ridership_summaries  # noqa: E402
+from src.data_loader import (  # noqa: E402
+    write_hourly_station_monthly_summaries,
+    write_hourly_workbook_validation,
+    write_monthly_station_ridership_summaries,
+)
 # endregion
 
 
@@ -35,8 +39,17 @@ def main():
     routes_gdf = gpd.read_file(BART_STATIONS_DIR / "bart_geojson.json")
     routes_gdf.to_file(PROCESSED / "bart_geojson.geojson", driver="GeoJSON")
 
-    ridership_summary_path = write_monthly_station_ridership_summaries()
+    hourly_summary_path = write_hourly_station_monthly_summaries()
+    print(f"Hourly OD monthly station summaries written to {hourly_summary_path}")
+
+    ridership_summary_path = write_monthly_station_ridership_summaries(
+        hourly_summary_path=hourly_summary_path,
+    )
     print(f"Monthly ridership summaries written to {ridership_summary_path}")
+
+    validation_path = write_hourly_workbook_validation()
+    print(f"Hourly OD validation written to {validation_path}")
+
     print(f"Processed data written to {PROCESSED}")
 
 

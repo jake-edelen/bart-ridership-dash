@@ -2,6 +2,7 @@ import unittest
 import sys
 from pathlib import Path
 
+import pandas as pd
 from shapely.geometry import Point
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -15,6 +16,8 @@ from src.data_loader import (
     find_ridership_workbook,
     get_available_ridership_periods,
     get_ridership_station_codes_by_year,
+    load_hourly_station_ridership_for_month,
+    load_monthly_station_ridership_summary,
     load_station_ridership_for_period,
     load_monthly_ridership_long,
     load_raw_routes,
@@ -22,7 +25,12 @@ from src.data_loader import (
     parse_ridership_period,
     summarize_station_ridership,
 )
-from src.config import RIDERSHIP_2018_DIR
+from src.config import (
+    HOURLY_OD_2018_CSV,
+    PROCESSED_HOURLY_STATION_MONTHLY_SUMMARY,
+    PROCESSED_HOURLY_VALIDATION_CSV,
+    RIDERSHIP_2018_DIR,
+)
 from src.route_builder import (
     build_current_routes,
     validate_extension_station_geometry,
@@ -34,7 +42,7 @@ from src.service_patterns import (
     get_service_patterns_for_range,
     validate_service_pattern_station_codes,
 )
-from src.station_mapping import STATION_MAPPING
+from src.station_mapping import STATION_MAPPING, normalize_workbook_station_code
 
 
 class ServicePatternTests(unittest.TestCase):
@@ -114,26 +122,96 @@ class RidershipWorkbookTests(unittest.TestCase):
 
     def test_old_workbook_format_headers(self):
         codes = set(extract_ridership_station_codes("data/raw/ridership_2022/Ridership_202201.xlsx"))
-        self.assertTrue({"RM", "EN", "EP", "PC", "AN", "ML", "BE"} <= codes)
+        self.assertTrue({"RM", "EN", "EP", "PITT", "WP", "WD", "PC", "AN", "ML", "BE"} <= codes)
+        self.assertNotIn("WS", codes)
 
     def test_new_workbook_format_headers(self):
         codes = set(extract_ridership_station_codes("data/raw/ridership_2024/Ridership_202401.xlsx"))
-        self.assertTrue({"RM", "EN", "EP", "PC", "AN", "ML", "BE", "12th", "19th"} <= codes)
+        self.assertTrue({"RM", "EN", "EP", "PITT", "WP", "WD", "PC", "AN", "ML", "BE", "12th", "19th"} <= codes)
+        self.assertNotIn("WS", codes)
 
     def test_total_sheet_order_does_not_matter(self):
         codes = set(extract_ridership_station_codes("data/raw/ridership_OD_2025/Ridership_202505.xlsx"))
-        self.assertTrue({"RM", "EN", "EP", "PC", "AN", "ML", "BE"} <= codes)
+        self.assertTrue({"RM", "EN", "EP", "PITT", "WP", "WD", "PC", "AN", "ML", "BE"} <= codes)
+        self.assertNotIn("WS", codes)
+
+    def test_workbook_station_aliases_use_canonical_app_codes(self):
+        self.assertEqual("PITT", normalize_workbook_station_code("WP"))
+        self.assertEqual("WP", normalize_workbook_station_code("WD"))
+        self.assertEqual("WD", normalize_workbook_station_code("WS"))
+        self.assertEqual("OA", normalize_workbook_station_code("OA"))
 
     def test_codes_by_year_includes_2022(self):
         codes_by_year = get_ridership_station_codes_by_year()
         self.assertIn("2022", codes_by_year)
-        self.assertTrue({"PC", "AN", "ML", "BE"} <= set(codes_by_year["2022"]))
+        self.assertTrue({"PITT", "WP", "WD", "PC", "AN", "ML", "BE"} <= set(codes_by_year["2022"]))
+        self.assertNotIn("WS", set(codes_by_year["2022"]))
 
     def test_available_ridership_periods_include_project_range(self):
         periods = set(get_available_ridership_periods())
 
         self.assertIn((2018, 1), periods)
         self.assertIn((2025, 5), periods)
+
+    def test_processed_ridership_summary_drives_period_loading(self):
+        monthly_summary = load_monthly_station_ridership_summary()
+        periods = get_available_ridership_periods()
+        station_summary = load_station_ridership_for_period(2018, 1)
+
+        self.assertIn((2018, 1), periods)
+        self.assertIn("Source Type", monthly_summary.columns)
+        self.assertEqual(9785965, int(station_summary["Ridership"].sum()))
+
+    def test_processed_hourly_monthly_summary_artifact_exists(self):
+        hourly_summary = pd.read_csv(PROCESSED_HOURLY_STATION_MONTHLY_SUMMARY)
+
+        self.assertTrue(
+            {
+                "Year",
+                "Month",
+                "Entry Station",
+                "Ridership",
+                "Full Station Name",
+                "Period",
+                "Source Type",
+                "Source File",
+            }
+            <= set(hourly_summary.columns)
+        )
+        self.assertIn(
+            (2018, 1),
+            {
+                (int(row["Year"]), int(row["Month"]))
+                for _, row in hourly_summary[["Year", "Month"]].drop_duplicates().iterrows()
+            },
+        )
+        january_2018 = hourly_summary[
+            (hourly_summary["Year"].astype(int) == 2018)
+            & (hourly_summary["Month"].astype(int) == 1)
+        ]
+        self.assertEqual(9785965, int(january_2018["Ridership"].sum()))
+
+    def test_hourly_workbook_validation_artifact_flags_station_differences(self):
+        validation = pd.read_csv(PROCESSED_HOURLY_VALIDATION_CSV)
+
+        self.assertTrue(
+            {
+                "Year",
+                "Month",
+                "Period",
+                "Entry Station",
+                "Workbook Ridership",
+                "Hourly OD Ridership",
+                "Difference",
+                "Has Difference",
+            }
+            <= set(validation.columns)
+        )
+        self.assertTrue(validation["Has Difference"].isin([True, False]).all())
+        self.assertTrue(
+            ((validation["Year"].astype(int) == 2018) & (validation["Month"].astype(int) == 2)).any()
+        )
+        self.assertTrue(validation["Has Difference"].any())
 
     def test_ridership_period_parser_and_finder(self):
         workbook = find_ridership_workbook(2025, 5)
@@ -147,6 +225,25 @@ class RidershipWorkbookTests(unittest.TestCase):
         self.assertTrue({"Entry Station", "Ridership", "Full Station Name"} <= set(station_summary.columns))
         self.assertTrue({"ML", "BE"} <= set(station_summary["Entry Station"]))
 
+    def test_january_2018_hourly_od_fallback_matches_monthly_total(self):
+        station_summary = load_hourly_station_ridership_for_month(2018, 1, HOURLY_OD_2018_CSV)
+
+        self.assertAlmostEqual(9785965, float(station_summary["Ridership"].sum()))
+        self.assertIn("PITT", set(station_summary["Entry Station"]))
+
+    def test_hourly_od_extension_station_aliases_are_normalized(self):
+        station_summary = load_hourly_station_ridership_for_month(2025, 5)
+
+        self.assertTrue({"ML", "BE"} <= set(station_summary["Entry Station"]))
+        self.assertGreater(
+            float(station_summary.loc[station_summary["Entry Station"] == "ML", "Ridership"].iloc[0]),
+            0,
+        )
+        self.assertGreater(
+            float(station_summary.loc[station_summary["Entry Station"] == "BE", "Ridership"].iloc[0]),
+            0,
+        )
+
     def test_ridership_parser_excludes_total_rows_and_columns(self):
         station_summary = summarize_station_ridership(
             load_monthly_ridership_long("data/raw/ridership_OD_2025/Ridership_202505.xlsx")
@@ -158,13 +255,50 @@ class RidershipWorkbookTests(unittest.TestCase):
         self.assertAlmostEqual(4670575, float(station_summary["Ridership"].sum()))
 
     def test_monthly_summary_builder_adds_period_columns(self):
+        hourly_summary = pd.concat(
+            [
+                load_hourly_station_ridership_for_month(2018, 1, HOURLY_OD_2018_CSV).assign(
+                    Year=2018,
+                    Month=1,
+                    Period="2018-01",
+                    **{"Source Type": "hourly_od", "Source File": str(HOURLY_OD_2018_CSV)},
+                ),
+                load_hourly_station_ridership_for_month(2018, 2, HOURLY_OD_2018_CSV).assign(
+                    Year=2018,
+                    Month=2,
+                    Period="2018-02",
+                    **{"Source Type": "hourly_od", "Source File": str(HOURLY_OD_2018_CSV)},
+                ),
+            ],
+            ignore_index=True,
+        )
         station_summary = build_monthly_station_ridership_summaries(
-            raw_root=RIDERSHIP_2018_DIR.parent / "ridership_2018"
+            raw_root=RIDERSHIP_2018_DIR,
+            hourly_summary=hourly_summary,
         )
 
         self.assertFalse(station_summary.empty)
         self.assertEqual({2018}, set(station_summary["Year"]))
         self.assertTrue({1, 12} <= set(station_summary["Month"]))
+        self.assertIn("Source Type", station_summary.columns)
+        january_summary = station_summary[station_summary["Month"] == 1]
+        self.assertEqual({"hourly_od"}, set(january_summary["Source Type"]))
+        self.assertAlmostEqual(9785965, float(january_summary["Ridership"].sum()))
+        february_summary = station_summary[station_summary["Month"] == 2]
+        self.assertEqual({"hourly_od"}, set(february_summary["Source Type"]))
+        self.assertEqual(
+            148391,
+            int(february_summary.loc[february_summary["Entry Station"] == "PITT", "Ridership"].iloc[0]),
+        )
+        self.assertEqual(
+            76895,
+            int(february_summary.loc[february_summary["Entry Station"] == "WP", "Ridership"].iloc[0]),
+        )
+        self.assertEqual(
+            70757,
+            int(february_summary.loc[february_summary["Entry Station"] == "WD", "Ridership"].iloc[0]),
+        )
+        self.assertNotIn("WS", set(february_summary["Entry Station"]))
 
 
 class GeometryCoverageTests(unittest.TestCase):
@@ -192,6 +326,15 @@ class GeometryCoverageTests(unittest.TestCase):
             ("PC", "AN", "ML", "BE", "WD", "OA"),
         )
         self.assertEqual((), problems)
+
+    def test_processed_station_and_route_artifacts_drive_geometry_loading(self):
+        self.assertFalse(self.stations_gdf.empty)
+        self.assertFalse(self.raw_routes_gdf.empty)
+        self.assertTrue({"Name", "lat", "lon", "geometry"} <= set(self.stations_gdf.columns))
+        self.assertTrue(self.stations_gdf.geometry.notna().all())
+        self.assertTrue(self.raw_routes_gdf.geometry.notna().all())
+        self.assertIn("Oakland International Airport", set(self.stations_gdf["Name"]))
+        self.assertNotIn("Coliseum/Airport Connector", set(self.stations_gdf["Name"]))
 
     def test_route_builder_outputs_current_routes(self):
         routes = build_current_routes(self.raw_routes_gdf, self.stations_gdf, service_date="2025-01-01")
@@ -300,6 +443,13 @@ class DashRouteYearTests(unittest.TestCase):
             self.assertIn("Coliseum to Oakland Airport", option_values)
             self.assertEqual("Coliseum to Oakland Airport", value)
 
+    def test_ridership_year_drives_route_dropdown_options(self):
+        options, _ = self.dash_app.update_route_dropdown(2018, "all")
+        option_values = {option["value"] for option in options}
+
+        self.assertIn("Fremont to Richmond", option_values)
+        self.assertNotIn("Berryessa/North San JosÃ© to Richmond", option_values)
+
     def test_ridership_month_dropdown_matches_selected_year(self):
         options, value = self.dash_app.update_ridership_month_dropdown(2025, 13)
         option_values = {option["value"] for option in options}
@@ -308,17 +458,48 @@ class DashRouteYearTests(unittest.TestCase):
         self.assertNotIn(13, option_values)
         self.assertEqual(1, value)
 
+    def test_station_dropdown_options_match_selected_ridership_period(self):
+        january_options = {
+            option["value"]
+            for option in self.dash_app._station_options_for_ridership_period(2018, 1)
+        }
+        may_2025_options = {
+            option["value"]
+            for option in self.dash_app._station_options_for_ridership_period(2025, 5)
+        }
+
+        self.assertNotIn("Milpitas", january_options)
+        self.assertIn("Milpitas", may_2025_options)
+
+    def test_station_dropdown_clears_stations_missing_from_period(self):
+        _, station1, _, station2 = self.dash_app.update_station_dropdowns(
+            2018,
+            1,
+            "Milpitas",
+            "Embarcadero",
+        )
+
+        self.assertIsNone(station1)
+        self.assertEqual("Embarcadero", station2)
+
     def test_map_callback_returns_figures_for_selected_year(self):
-        figures = self.dash_app.update_maps(2025, "all", 2018, 1, None, None)
+        figures = self.dash_app.update_maps("all", 2018, 1, None, None)
 
         self.assertEqual(3, len(figures))
         self.assertTrue(all(figure.__class__.__name__ == "Figure" for figure in figures))
 
     def test_map_callback_uses_selected_ridership_period(self):
-        _, ridership_map, bar_chart = self.dash_app.update_maps(2025, "all", 2025, 5, None, None)
+        _, ridership_map, bar_chart = self.dash_app.update_maps("all", 2025, 5, None, None)
 
         self.assertEqual("Station Ridership Map (May 2025)", ridership_map.layout.title.text)
         self.assertEqual("Top 10 Stations by May 2025 Ridership", bar_chart.layout.title.text)
+
+    def test_map_callback_uses_ridership_year_for_route_geometry(self):
+        colored_map, _, _ = self.dash_app.update_maps("all", 2018, 1, None, None)
+        route_names = {trace.name for trace in colored_map.data if trace.name != "BART Stations"}
+
+        self.assertIn("Fremont to Richmond", route_names)
+        self.assertNotIn("Berryessa/North San JosÃ© to Richmond", route_names)
 
     def test_ridership_map_marker_sizes_are_capped(self):
         routes_gdf = self.dash_app._routes_for_year(2025)
@@ -333,6 +514,24 @@ class DashRouteYearTests(unittest.TestCase):
 
         self.assertLessEqual(max(station_trace.marker.size), 34)
         self.assertGreaterEqual(min(station_trace.marker.size), 5)
+
+    def test_selected_station_color_scale_uses_period_range(self):
+        _, ridership_map, bar_chart = self.dash_app.update_maps(
+            "all",
+            2018,
+            1,
+            "19th St/Oakland",
+            "16th St/Mission",
+        )
+        station_trace = ridership_map.data[-1]
+        period_max = float(
+            self.dash_app._station_ridership_for_period(2018, 1)["Ridership"].max()
+        )
+
+        self.assertEqual(0, station_trace.marker.cmin)
+        self.assertEqual(period_max, station_trace.marker.cmax)
+        self.assertEqual(0, bar_chart.layout.coloraxis.cmin)
+        self.assertEqual(period_max, bar_chart.layout.coloraxis.cmax)
 
     def test_route_legend_has_one_clickable_item_per_route(self):
         routes_gdf = self.dash_app._routes_for_year(2025)
@@ -419,13 +618,19 @@ class DashRouteYearTests(unittest.TestCase):
         ]
         figure = self.dash_app._build_ridership_bar_chart(filtered_ridership)
 
-        self.assertEqual("Selected Station Ridership (January 2018)", figure.layout.title.text)
+        self.assertEqual("Selected Station Comparison (January 2018)", figure.layout.title.text)
         self.assertEqual({"Embarcadero", "Montgomery St"}, set(figure.data[0].y))
+        self.assertEqual(1, len(figure.layout.annotations))
+        self.assertIn("riders higher than", figure.layout.annotations[0].text)
+
+    def test_colored_route_map_title_has_no_explanatory_subheader(self):
+        routes_gdf = self.dash_app._routes_for_year(2025)
+        figure = self.dash_app._build_colored_route_map(routes_gdf, 2025)
+
+        self.assertEqual("Route Reference Map (2025 service)", figure.layout.title.text)
 
     def test_ridership_source_remains_january_2018(self):
-        expected = summarize_station_ridership(
-            load_monthly_ridership_long(RIDERSHIP_2018_DIR / "Ridership_201801.xlsx")
-        )
+        expected = load_station_ridership_for_period(2018, 1)
         actual = self.dash_app.app_data.station_ridership
 
         self.assertFalse(actual.empty)

@@ -57,11 +57,71 @@ STATION_MAPPING = {
     "BE": "Berryessa/North San José",
     "PC": "Pittsburg Center",
     "AN": "Antioch",
+    "PITT": "Pittsburg/Bay Point",
 }
 # endregion
 
 
 # region Station Code Normalization
+HOURLY_OD_STATION_ALIASES = {
+    "12TH": "12th",
+    "16TH": "16th",
+    "19TH": "19th",
+    "24TH": "24th",
+    "ANTC": "AN",
+    "ASHB": "AS",
+    "BALB": "BP",
+    "BAYF": "BF",
+    "BERY": "BE",
+    "CAST": "CV",
+    "CIVC": "CC",
+    "COLM": "CM",
+    "COLS": "CL",
+    "CONC": "CN",
+    "DALY": "DC",
+    "DBRK": "BK",
+    "DELN": "EN",
+    "DUBL": "ED",
+    "EMBR": "EM",
+    "FRMT": "FM",
+    "FTVL": "FV",
+    "GLEN": "GP",
+    "HAYW": "HY",
+    "LAFY": "LF",
+    "LAKE": "LM",
+    "MCAR": "MA",
+    "MLPT": "ML",
+    "MLBR": "MB",
+    "MONT": "MT",
+    "NBRK": "NB",
+    "NCON": "NC",
+    "OAKL": "OA",
+    "ORIN": "OR",
+    "PCTR": "PC",
+    "PHIL": "PH",
+    "PITT": "PITT",
+    "PLZA": "EP",
+    "POWL": "PL",
+    "RICH": "RM",
+    "ROCK": "RR",
+    "SANL": "SL",
+    "SBRN": "SB",
+    "SFIA": "SO",
+    "SHAY": "SH",
+    "SSAN": "SS",
+    "UCTY": "UC",
+    "WARM": "WD",
+    "WCRK": "WC",
+    "WDUB": "WP",
+    "WOAK": "OW",
+}
+
+WORKBOOK_STATION_ALIASES = {
+    "WP": "PITT",
+    "WD": "WP",
+    "WS": "WD",
+}
+
 CANONICAL_CODE_ALIASES = {
     "12": "12th",
     "12.0": "12th",
@@ -75,6 +135,7 @@ CANONICAL_CODE_ALIASES = {
 
 IGNORED_STATION_NAMES = {
     "eBART Transfer",
+    "Coliseum/Airport Connector",
 }
 
 
@@ -82,4 +143,21 @@ def normalize_station_code(code):
     """Return the canonical ridership station code used by service patterns."""
     text_code = str(code).strip()
     return CANONICAL_CODE_ALIASES.get(text_code, text_code)
+
+
+def normalize_hourly_od_station_code(code):
+    """Return the canonical station code for four-character hourly OD labels."""
+    text_code = str(code).strip().upper()
+    return HOURLY_OD_STATION_ALIASES.get(text_code, normalize_station_code(text_code))
+
+
+def normalize_workbook_station_code(code):
+    """Return the canonical station code for BART ridership workbook labels.
+
+    BART workbook labels use legacy abbreviations for some stations. For
+    example, workbook `WP` means Pittsburg/Bay Point, while the app's canonical
+    `WP` means West Dublin/Pleasanton.
+    """
+    text_code = normalize_station_code(code)
+    return WORKBOOK_STATION_ALIASES.get(text_code, text_code)
 # endregion
