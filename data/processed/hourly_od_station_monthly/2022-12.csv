@@ -1,0 +1,51 @@
+Year,Month,Period,Entry Station,station_id,Full Station Name,display_name,Ridership,Source Type,Source File
+2022,12,2022-12,12th,12th,12th St/Oakland City Center,12th St/Oakland City Center,92855.0,hourly_od,C:\Users\Carl Wheezer\Documents\git-test\bart-ridership-dash\data\raw\Hourly_OD\date-hour-soo-dest-2022.csv
+2022,12,2022-12,16th,16th,16th St/Mission,16th St/Mission,119491.0,hourly_od,C:\Users\Carl Wheezer\Documents\git-test\bart-ridership-dash\data\raw\Hourly_OD\date-hour-soo-dest-2022.csv
+2022,12,2022-12,19th,19th,19th St/Oakland,19th St/Oakland,89541.0,hourly_od,C:\Users\Carl Wheezer\Documents\git-test\bart-ridership-dash\data\raw\Hourly_OD\date-hour-soo-dest-2022.csv
+2022,12,2022-12,24th,24th,24th St/Mission,24th St/Mission,117517.0,hourly_od,C:\Users\Carl Wheezer\Documents\git-test\bart-ridership-dash\data\raw\Hourly_OD\date-hour-soo-dest-2022.csv
+2022,12,2022-12,AN,antc,Antioch,Antioch,36058.0,hourly_od,C:\Users\Carl Wheezer\Documents\git-test\bart-ridership-dash\data\raw\Hourly_OD\date-hour-soo-dest-2022.csv
+2022,12,2022-12,AS,ashb,Ashby,Ashby,40706.0,hourly_od,C:\Users\Carl Wheezer\Documents\git-test\bart-ridership-dash\data\raw\Hourly_OD\date-hour-soo-dest-2022.csv
+2022,12,2022-12,BE,bery,Berryessa/North San José,Berryessa/North San Jose,26368.0,hourly_od,C:\Users\Carl Wheezer\Documents\git-test\bart-ridership-dash\data\raw\Hourly_OD\date-hour-soo-dest-2022.csv
+2022,12,2022-12,BF,bayf,Bay Fair,Bay Fair,54681.0,hourly_od,C:\Users\Carl Wheezer\Documents\git-test\bart-ridership-dash\data\raw\Hourly_OD\date-hour-soo-dest-2022.csv
+2022,12,2022-12,BK,dbrk,Downtown Berkeley,Downtown Berkeley,99714.0,hourly_od,C:\Users\Carl Wheezer\Documents\git-test\bart-ridership-dash\data\raw\Hourly_OD\date-hour-soo-dest-2022.csv
+2022,12,2022-12,BP,balb,Balboa Park,Balboa Park,90371.0,hourly_od,C:\Users\Carl Wheezer\Documents\git-test\bart-ridership-dash\data\raw\Hourly_OD\date-hour-soo-dest-2022.csv
+2022,12,2022-12,CC,civc,Civic Center/UN Plaza,Civic Center/UN Plaza,201060.0,hourly_od,C:\Users\Carl Wheezer\Documents\git-test\bart-ridership-dash\data\raw\Hourly_OD\date-hour-soo-dest-2022.csv
+2022,12,2022-12,CL,cols,Coliseum,Coliseum,46518.0,hourly_od,C:\Users\Carl Wheezer\Documents\git-test\bart-ridership-dash\data\raw\Hourly_OD\date-hour-soo-dest-2022.csv
+2022,12,2022-12,CM,colm,Colma,Colma,33587.0,hourly_od,C:\Users\Carl Wheezer\Documents\git-test\bart-ridership-dash\data\raw\Hourly_OD\date-hour-soo-dest-2022.csv
+2022,12,2022-12,CN,conc,Concord,Concord,50147.0,hourly_od,C:\Users\Carl Wheezer\Documents\git-test\bart-ridership-dash\data\raw\Hourly_OD\date-hour-soo-dest-2022.csv
+2022,12,2022-12,CV,cast,Castro Valley,Castro Valley,23998.0,hourly_od,C:\Users\Carl Wheezer\Documents\git-test\bart-ridership-dash\data\raw\Hourly_OD\date-hour-soo-dest-2022.csv
+2022,12,2022-12,DC,daly,Daly City,Daly City,88787.0,hourly_od,C:\Users\Carl Wheezer\Documents\git-test\bart-ridership-dash\data\raw\Hourly_OD\date-hour-soo-dest-2022.csv
+2022,12,2022-12,ED,dubl,Dublin/Pleasanton,Dublin/Pleasanton,56400.0,hourly_od,C:\Users\Carl Wheezer\Documents\git-test\bart-ridership-dash\data\raw\Hourly_OD\date-hour-soo-dest-2022.csv
+2022,12,2022-12,EM,embr,Embarcadero,Embarcadero,266366.0,hourly_od,C:\Users\Carl Wheezer\Documents\git-test\bart-ridership-dash\data\raw\Hourly_OD\date-hour-soo-dest-2022.csv
+2022,12,2022-12,EN,deln,El Cerrito del Norte,El Cerrito del Norte,74528.0,hourly_od,C:\Users\Carl Wheezer\Documents\git-test\bart-ridership-dash\data\raw\Hourly_OD\date-hour-soo-dest-2022.csv
+2022,12,2022-12,EP,plza,El Cerrito Plaza,El Cerrito Plaza,42759.0,hourly_od,C:\Users\Carl Wheezer\Documents\git-test\bart-ridership-dash\data\raw\Hourly_OD\date-hour-soo-dest-2022.csv
+2022,12,2022-12,FM,frmt,Fremont,Fremont,37097.0,hourly_od,C:\Users\Carl Wheezer\Documents\git-test\bart-ridership-dash\data\raw\Hourly_OD\date-hour-soo-dest-2022.csv
+2022,12,2022-12,FV,ftvl,Fruitvale,Fruitvale,81789.0,hourly_od,C:\Users\Carl Wheezer\Documents\git-test\bart-ridership-dash\data\raw\Hourly_OD\date-hour-soo-dest-2022.csv
+2022,12,2022-12,GP,glen,Glen Park,Glen Park,65625.0,hourly_od,C:\Users\Carl Wheezer\Documents\git-test\bart-ridership-dash\data\raw\Hourly_OD\date-hour-soo-dest-2022.csv
+2022,12,2022-12,HY,hayw,Hayward,Hayward,43497.0,hourly_od,C:\Users\Carl Wheezer\Documents\git-test\bart-ridership-dash\data\raw\Hourly_OD\date-hour-soo-dest-2022.csv
+2022,12,2022-12,LF,lafy,Lafayette,Lafayette,29669.0,hourly_od,C:\Users\Carl Wheezer\Documents\git-test\bart-ridership-dash\data\raw\Hourly_OD\date-hour-soo-dest-2022.csv
+2022,12,2022-12,LM,lake,Lake Merritt,Lake Merritt,60951.0,hourly_od,C:\Users\Carl Wheezer\Documents\git-test\bart-ridership-dash\data\raw\Hourly_OD\date-hour-soo-dest-2022.csv
+2022,12,2022-12,MA,mcar,MacArthur,MacArthur,75501.0,hourly_od,C:\Users\Carl Wheezer\Documents\git-test\bart-ridership-dash\data\raw\Hourly_OD\date-hour-soo-dest-2022.csv
+2022,12,2022-12,MB,mlbr,Millbrae,Millbrae,42940.0,hourly_od,C:\Users\Carl Wheezer\Documents\git-test\bart-ridership-dash\data\raw\Hourly_OD\date-hour-soo-dest-2022.csv
+2022,12,2022-12,ML,mlpt,Milpitas,Milpitas,23718.0,hourly_od,C:\Users\Carl Wheezer\Documents\git-test\bart-ridership-dash\data\raw\Hourly_OD\date-hour-soo-dest-2022.csv
+2022,12,2022-12,MT,mont,Montgomery St,Montgomery St,218938.0,hourly_od,C:\Users\Carl Wheezer\Documents\git-test\bart-ridership-dash\data\raw\Hourly_OD\date-hour-soo-dest-2022.csv
+2022,12,2022-12,NB,nbrk,North Berkeley,North Berkeley,37394.0,hourly_od,C:\Users\Carl Wheezer\Documents\git-test\bart-ridership-dash\data\raw\Hourly_OD\date-hour-soo-dest-2022.csv
+2022,12,2022-12,NC,ncon,North Concord/Martinez,North Concord/Martinez,12726.0,hourly_od,C:\Users\Carl Wheezer\Documents\git-test\bart-ridership-dash\data\raw\Hourly_OD\date-hour-soo-dest-2022.csv
+2022,12,2022-12,OA,oakl,Oakland International Airport,Oakland International Airport,16951.0,hourly_od,C:\Users\Carl Wheezer\Documents\git-test\bart-ridership-dash\data\raw\Hourly_OD\date-hour-soo-dest-2022.csv
+2022,12,2022-12,OR,orin,Orinda,Orinda,23377.0,hourly_od,C:\Users\Carl Wheezer\Documents\git-test\bart-ridership-dash\data\raw\Hourly_OD\date-hour-soo-dest-2022.csv
+2022,12,2022-12,OW,woak,West Oakland,West Oakland,77538.0,hourly_od,C:\Users\Carl Wheezer\Documents\git-test\bart-ridership-dash\data\raw\Hourly_OD\date-hour-soo-dest-2022.csv
+2022,12,2022-12,PC,pctr,Pittsburg Center,Pittsburg Center,11950.0,hourly_od,C:\Users\Carl Wheezer\Documents\git-test\bart-ridership-dash\data\raw\Hourly_OD\date-hour-soo-dest-2022.csv
+2022,12,2022-12,PH,phil,Pleasant Hill/Contra Costa Centre,Pleasant Hill/Contra Costa Centre,46013.0,hourly_od,C:\Users\Carl Wheezer\Documents\git-test\bart-ridership-dash\data\raw\Hourly_OD\date-hour-soo-dest-2022.csv
+2022,12,2022-12,PITT,pitt,Pittsburg/Bay Point,Pittsburg/Bay Point,37641.0,hourly_od,C:\Users\Carl Wheezer\Documents\git-test\bart-ridership-dash\data\raw\Hourly_OD\date-hour-soo-dest-2022.csv
+2022,12,2022-12,PL,powl,Powell St,Powell St,328206.0,hourly_od,C:\Users\Carl Wheezer\Documents\git-test\bart-ridership-dash\data\raw\Hourly_OD\date-hour-soo-dest-2022.csv
+2022,12,2022-12,RM,rich,Richmond,Richmond,51126.0,hourly_od,C:\Users\Carl Wheezer\Documents\git-test\bart-ridership-dash\data\raw\Hourly_OD\date-hour-soo-dest-2022.csv
+2022,12,2022-12,RR,rock,Rockridge,Rockridge,46359.0,hourly_od,C:\Users\Carl Wheezer\Documents\git-test\bart-ridership-dash\data\raw\Hourly_OD\date-hour-soo-dest-2022.csv
+2022,12,2022-12,SB,sbrn,San Bruno,San Bruno,29810.0,hourly_od,C:\Users\Carl Wheezer\Documents\git-test\bart-ridership-dash\data\raw\Hourly_OD\date-hour-soo-dest-2022.csv
+2022,12,2022-12,SH,shay,South Hayward,South Hayward,28859.0,hourly_od,C:\Users\Carl Wheezer\Documents\git-test\bart-ridership-dash\data\raw\Hourly_OD\date-hour-soo-dest-2022.csv
+2022,12,2022-12,SL,sanl,San Leandro,San Leandro,62277.0,hourly_od,C:\Users\Carl Wheezer\Documents\git-test\bart-ridership-dash\data\raw\Hourly_OD\date-hour-soo-dest-2022.csv
+2022,12,2022-12,SO,sfia,San Francisco International Airport,San Francisco International Airport,98455.0,hourly_od,C:\Users\Carl Wheezer\Documents\git-test\bart-ridership-dash\data\raw\Hourly_OD\date-hour-soo-dest-2022.csv
+2022,12,2022-12,SS,ssan,South San Francisco,South San Francisco,26655.0,hourly_od,C:\Users\Carl Wheezer\Documents\git-test\bart-ridership-dash\data\raw\Hourly_OD\date-hour-soo-dest-2022.csv
+2022,12,2022-12,UC,ucty,Union City,Union City,34366.0,hourly_od,C:\Users\Carl Wheezer\Documents\git-test\bart-ridership-dash\data\raw\Hourly_OD\date-hour-soo-dest-2022.csv
+2022,12,2022-12,WC,wcrk,Walnut Creek,Walnut Creek,52711.0,hourly_od,C:\Users\Carl Wheezer\Documents\git-test\bart-ridership-dash\data\raw\Hourly_OD\date-hour-soo-dest-2022.csv
+2022,12,2022-12,WD,warm,Warm Springs/South Fremont,Warm Springs/South Fremont,25831.0,hourly_od,C:\Users\Carl Wheezer\Documents\git-test\bart-ridership-dash\data\raw\Hourly_OD\date-hour-soo-dest-2022.csv
+2022,12,2022-12,WP,wdub,West Dublin/Pleasanton,West Dublin/Pleasanton,24203.0,hourly_od,C:\Users\Carl Wheezer\Documents\git-test\bart-ridership-dash\data\raw\Hourly_OD\date-hour-soo-dest-2022.csv

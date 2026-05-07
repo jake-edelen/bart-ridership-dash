@@ -1,0 +1,51 @@
+station_id,display_name,latitude,longitude,opened_date,closed_date,geom_source_name
+12th,12th St/Oakland City Center,37.80359016,-122.27167605,,,12th St/Oakland City Center
+16th,16th St/Mission,37.76505424,-122.41970814,,,16th St/Mission
+19th,19th St/Oakland,37.80849329,-122.26865397,,,19th St/Oakland
+24th,24th St/Mission,37.75223145,-122.41846788,,,24th St/Mission
+antc,Antioch,37.99539273,-121.78043336,2018-05-26,,Antioch
+ashb,Ashby,37.85257465,-122.26999396,,,Ashby
+balb,Balboa Park,37.72135059,-122.44758736,,,Balboa Park
+bayf,Bay Fair,37.69691620,-122.12645963,,,Bay Fair
+bery,Berryessa/North San Jose,37.36847829,-121.87469384,2020-06-13,,Berryessa/North San Jose
+cast,Castro Valley,37.69074798,-122.07560669,,,Castro Valley
+civc,Civic Center/UN Plaza,37.77939386,-122.41393642,,,Civic Center/UN Plaza
+colm,Colma,37.68462161,-122.46622316,,,Colma
+cols,Coliseum,37.75368875,-122.19685921,,,Coliseum
+conc,Concord,37.97382499,-122.02906202,,,Concord
+daly,Daly City,37.70633321,-122.46891191,,,Daly City
+dbrk,Downtown Berkeley,37.87031611,-122.26815882,,,Downtown Berkeley
+deln,El Cerrito del Norte,37.92519242,-122.31691512,,,El Cerrito del Norte
+dubl,Dublin/Pleasanton,37.70168178,-121.89907397,,,Dublin/Pleasanton
+embr,Embarcadero,37.79285391,-122.39690099,,,Embarcadero
+frmt,Fremont,37.55747443,-121.97662640,,,Fremont
+ftvl,Fruitvale,37.77489446,-122.22417942,,,Fruitvale
+glen,Glen Park,37.73311239,-122.43379009,,,Glen Park
+hayw,Hayward,37.66969738,-122.08695995,,,Hayward
+lafy,Lafayette,37.89318568,-122.12464733,,,Lafayette
+lake,Lake Merritt,37.79729295,-122.26522683,,,Lake Merritt
+mcar,MacArthur,37.82908330,-122.26706349,,,MacArthur
+mlbr,Millbrae,37.60019410,-122.38685050,,,Millbrae
+mlpt,Milpitas,37.41028236,-121.89109408,2020-06-13,,Milpitas
+mont,Montgomery St,37.78944952,-122.40117471,,,Montgomery St
+nbrk,North Berkeley,37.87397423,-122.28343372,,,North Berkeley
+ncon,North Concord/Martinez,38.00332452,-122.02455231,,,North Concord/Martinez
+oakl,Oakland International Airport,37.71297182,-122.21244017,2014-11-22,,Oakland International Airport
+orin,Orinda,37.87843137,-122.18375369,,,Orinda
+pctr,Pittsburg Center,38.01694606,-121.88947016,2018-05-26,,Pittsburg Center
+phil,Pleasant Hill/Contra Costa Centre,37.92844180,-122.05597840,,,Pleasant Hill/Contra Costa Centre
+pitt,Pittsburg/Bay Point,38.01891420,-121.94398010,,,Pittsburg/Bay Point
+plza,El Cerrito Plaza,37.90263523,-122.29894841,,,El Cerrito Plaza
+powl,Powell St,37.78487090,-122.40701766,,,Powell St
+rich,Richmond,37.93674989,-122.35306052,,,Richmond
+rock,Rockridge,37.84473931,-122.25131463,,,Rockridge
+sanl,San Leandro,37.72178541,-122.16075070,,,San Leandro
+sbrn,San Bruno,37.63770374,-122.41626666,,,San Bruno
+sfia,San Francisco International Airport,37.61599768,-122.39241408,,,San Francisco International Airport
+shay,South Hayward,37.63435057,-122.05719731,,,South Hayward
+ssan,South San Francisco,37.66421054,-122.44397766,,,South San Francisco
+ucty,Union City,37.59073432,-122.01725601,,,Union City
+warm,Warm Springs/South Fremont,37.50233497,-121.93943303,2017-03-25,,Warm Springs/South Fremont
+wcrk,Walnut Creek,37.90581393,-122.06732938,,,Walnut Creek
+wdub,West Dublin/Pleasanton,37.69975070,-121.92807710,2011-02-19,,West Dublin/Pleasanton
+woak,West Oakland,37.80488709,-122.29516083,,,West Oakland
