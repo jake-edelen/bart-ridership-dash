@@ -7,6 +7,7 @@ loaders only; processed artifact generation remains a separate script step.
 
 # region Imports
 from dataclasses import dataclass
+from calendar import monthrange
 import re
 from pathlib import Path
 
@@ -19,11 +20,18 @@ from .config import (
     HOURLY_OD_DIR,
     HOURLY_OD_2018_CSV,
     HOURLY_OD_2018_SAMPLE_CSV,
+    PROCESSED_HOURLY_COMPLETENESS_CSV,
+    PROCESSED_HOURLY_COMPLETENESS_PARQUET,
     PROCESSED_HOURLY_STATION_MONTHLY_DIR,
+    PROCESSED_HOURLY_STATION_MONTHLY_PARQUET_DIR,
     PROCESSED_HOURLY_STATION_MONTHLY_SUMMARY,
+    PROCESSED_HOURLY_STATION_MONTHLY_SUMMARY_PARQUET,
     PROCESSED_HOURLY_VALIDATION_CSV,
+    PROCESSED_HOURLY_VALIDATION_PARQUET,
     PROCESSED_RAW_ROUTES_GEOJSON,
     PROCESSED_STATIONS_GEOJSON,
+    PROCESSED_STATION_RIDERSHIP_MONTHLY_SUMMARY_CSV,
+    PROCESSED_STATION_RIDERSHIP_MONTHLY_SUMMARY_PARQUET,
     RAW,
     RIDERSHIP_2018_DIR,
     PROCESSED,
@@ -35,6 +43,7 @@ from .station_mapping import (
     normalize_hourly_od_station_code,
     normalize_workbook_station_code,
 )
+from .station_registry import add_station_identity
 # endregion
 
 
@@ -59,6 +68,36 @@ HOURLY_OD_COLUMNS = [
     "ORIGIN",
     "DESTINATION",
     "Number of Exits",
+]
+
+STATION_SUMMARY_COLUMNS = [
+    "Year",
+    "Month",
+    "Period",
+    "Entry Station",
+    "station_id",
+    "Full Station Name",
+    "display_name",
+    "Ridership",
+    "Source Type",
+    "Source File",
+]
+
+VALIDATION_COLUMNS = [
+    "Year",
+    "Month",
+    "Period",
+    "Entry Station",
+    "station_id",
+    "Full Station Name",
+    "display_name",
+    "Workbook Ridership",
+    "Hourly OD Ridership",
+    "Difference",
+    "Absolute Difference",
+    "Has Difference",
+    "Workbook Source File",
+    "Hourly Source File",
 ]
 # endregion
 
@@ -86,7 +125,11 @@ class AppData:
 
 # region App Data Loader
 def load_app_data():
-    """Load and assemble the complete dataset required by the Dash app.
+    """Load and assemble processed datasets required by the Dash app.
+
+    Runtime app loading intentionally reads processed/reference artifacts only.
+    Raw workbook, hourly OD, KML, and GDB reads belong to `scripts/prepare_data.py`
+    and the writer helpers in this module.
 
     Returns:
         AppData containing station geometry, curated routes, station ridership,
@@ -242,7 +285,7 @@ def summarize_station_ridership(df_ridership_long):
         station_ridership["Entry Station"].isin(STATION_MAPPING)
     ]
     station_ridership["Full Station Name"] = station_ridership["Entry Station"].map(STATION_MAPPING)
-    return station_ridership
+    return _with_station_identity(station_ridership)
 
 
 def hourly_od_path_for_year(year, raw_root=RAW):
@@ -271,41 +314,18 @@ def load_hourly_station_ridership_for_month(year, month, path=None):
     if not csv_path.exists():
         raise FileNotFoundError(f"No hourly OD CSV found for {year}: {csv_path}")
 
-    period_prefix = f"{year}-{month:02d}"
-    monthly_chunks = []
+    monthly_summary = _aggregate_hourly_od_file_to_monthly_stations(csv_path)
+    selected_summary = monthly_summary[
+        (monthly_summary["Year"].astype(int) == year)
+        & (monthly_summary["Month"].astype(int) == month)
+    ].copy()
 
-    for chunk in pd.read_csv(
-        csv_path,
-        header=None,
-        names=HOURLY_OD_COLUMNS,
-        usecols=["Date", "ORIGIN", "Number of Exits"],
-        chunksize=500_000,
-    ):
-        selected_rows = chunk[chunk["Date"].astype(str).str.startswith(period_prefix)].copy()
-        if selected_rows.empty:
-            continue
-
-        selected_rows["Entry Station"] = selected_rows["ORIGIN"].map(normalize_hourly_od_station_code)
-        selected_rows = selected_rows[selected_rows["Entry Station"].isin(STATION_MAPPING)]
-        selected_rows["Ridership"] = pd.to_numeric(
-            selected_rows["Number of Exits"],
-            errors="coerce",
-        ).fillna(0)
-        monthly_chunks.append(
-            selected_rows.groupby("Entry Station", as_index=False)["Ridership"].sum()
-        )
-
-    if monthly_chunks:
-        station_ridership = (
-            pd.concat(monthly_chunks, ignore_index=True)
-            .groupby("Entry Station", as_index=False)["Ridership"]
-            .sum()
-        )
-    else:
+    if selected_summary.empty:
         station_ridership = pd.DataFrame(columns=["Entry Station", "Ridership"])
+        station_ridership["Full Station Name"] = station_ridership["Entry Station"].map(STATION_MAPPING)
+        return _with_station_identity(station_ridership)
 
-    station_ridership["Full Station Name"] = station_ridership["Entry Station"].map(STATION_MAPPING)
-    return station_ridership
+    return _normalize_station_summary_columns(selected_summary)
 
 
 def discover_hourly_od_files(raw_root=RAW):
@@ -332,20 +352,9 @@ def build_hourly_station_monthly_summaries(raw_root=RAW):
         monthly_summaries.append(hourly_summary)
 
     if not monthly_summaries:
-        return pd.DataFrame(
-            columns=[
-                "Year",
-                "Month",
-                "Entry Station",
-                "Ridership",
-                "Full Station Name",
-                "Period",
-                "Source Type",
-                "Source File",
-            ]
-        )
+        return pd.DataFrame(columns=STATION_SUMMARY_COLUMNS)
 
-    return pd.concat(monthly_summaries, ignore_index=True)
+    return pd.concat(monthly_summaries, ignore_index=True)[STATION_SUMMARY_COLUMNS]
 
 
 def write_hourly_station_monthly_summaries(
@@ -353,20 +362,168 @@ def write_hourly_station_monthly_summaries(
     summary_path=None,
     raw_root=RAW,
 ):
-    """Write hourly-derived monthly station summaries by month and combined CSV."""
+    """Write hourly-derived monthly station summaries as CSV and Parquet."""
     output_dir = Path(output_dir) if output_dir else PROCESSED_HOURLY_STATION_MONTHLY_DIR
     summary_path = Path(summary_path) if summary_path else PROCESSED_HOURLY_STATION_MONTHLY_SUMMARY
+    parquet_dir = PROCESSED_HOURLY_STATION_MONTHLY_PARQUET_DIR
+    parquet_summary_path = PROCESSED_HOURLY_STATION_MONTHLY_SUMMARY_PARQUET
     output_dir.mkdir(parents=True, exist_ok=True)
+    parquet_dir.mkdir(parents=True, exist_ok=True)
     summary_path.parent.mkdir(parents=True, exist_ok=True)
 
     hourly_summary = build_hourly_station_monthly_summaries(raw_root)
-    hourly_summary.to_csv(summary_path, index=False)
+    _write_table_artifacts(hourly_summary, summary_path, parquet_summary_path)
 
     for (year, month), monthly_summary in hourly_summary.groupby(["Year", "Month"]):
         monthly_path = output_dir / f"{int(year)}-{int(month):02d}.csv"
-        monthly_summary.to_csv(monthly_path, index=False)
+        monthly_parquet_path = parquet_dir / f"{int(year)}-{int(month):02d}.parquet"
+        _write_table_artifacts(monthly_summary, monthly_path, monthly_parquet_path)
 
     return summary_path
+
+
+def build_hourly_completeness_audit(raw_root=RAW, validation=None, hourly_summary=None):
+    """Build period-level quality flags for hourly OD coverage and imputation.
+
+    Missing full calendar days are imputed at the hourly station level before
+    monthly summaries are written. This audit records where that happened and
+    where workbook totals disagree with the canonical hourly-derived totals.
+    """
+    quality_rows = []
+    validation_totals = _period_validation_totals(validation)
+    hourly_totals = _period_hourly_summary_totals(hourly_summary)
+
+    for hourly_file in discover_hourly_od_files(raw_root):
+        daily_hourly = _read_hourly_od_file_to_daily_hourly_stations(hourly_file)
+        if daily_hourly.empty:
+            continue
+
+        imputed_daily_hourly = _impute_missing_full_days(daily_hourly)
+        raw_period_totals = (
+            daily_hourly.groupby(["Year", "Month"], as_index=False)["Ridership"]
+            .sum()
+            .rename(columns={"Ridership": "Raw Hourly Ridership"})
+        )
+        imputed_period_totals = (
+            imputed_daily_hourly.groupby(["Year", "Month"], as_index=False)["Ridership"]
+            .sum()
+            .rename(columns={"Ridership": "Imputed Hourly Ridership"})
+        )
+        raw_and_imputed = raw_period_totals.merge(
+            imputed_period_totals,
+            on=["Year", "Month"],
+            how="outer",
+        )
+
+        for (year, month), period_rows in daily_hourly.groupby(["Year", "Month"]):
+            period = f"{int(year)}-{int(month):02d}"
+            daily_hour_counts = period_rows.groupby("Date")["Hour"].nunique()
+            daily_first_hours = period_rows.groupby("Date")["Hour"].min()
+            daily_last_hours = period_rows.groupby("Date")["Hour"].max()
+            expected_dates = _expected_period_dates(year, month)
+            observed_dates = set(pd.to_datetime(period_rows["Date"]).dt.normalize())
+            missing_dates = [
+                date
+                for date in expected_dates
+                if date not in observed_dates
+            ]
+            totals = raw_and_imputed[
+                (raw_and_imputed["Year"].astype(int) == int(year))
+                & (raw_and_imputed["Month"].astype(int) == int(month))
+            ].iloc[0]
+            workbook_total = validation_totals.get(period, {}).get("Workbook Ridership")
+            validation_hourly_total = validation_totals.get(period, {}).get("Hourly OD Ridership")
+            canonical_hourly_total = hourly_totals.get(period, validation_hourly_total)
+            difference = (
+                None
+                if workbook_total is None or canonical_hourly_total is None
+                else canonical_hourly_total - workbook_total
+            )
+            difference_pct = (
+                None
+                if difference is None or not workbook_total
+                else difference / workbook_total
+            )
+
+            quality_rows.append(
+                {
+                    "Period": period,
+                    "Year": int(year),
+                    "Month": int(month),
+                    "Source File": str(hourly_file),
+                    "Calendar Days": len(expected_dates),
+                    "Observed Days": int(daily_hour_counts.shape[0]),
+                    "Missing Full Days": len(missing_dates),
+                    "Missing Full Day List": ", ".join(date.strftime("%Y-%m-%d") for date in missing_dates),
+                    "Min Present Hours": int(daily_hour_counts.min()),
+                    "Median Present Hours": float(daily_hour_counts.median()),
+                    "Median First Hour": float(daily_first_hours.median()),
+                    "Median Last Hour": float(daily_last_hours.median()),
+                    "Raw Hourly Ridership": float(totals["Raw Hourly Ridership"]),
+                    "Imputed Hourly Ridership": float(totals["Imputed Hourly Ridership"]),
+                    "Imputed Ridership Added": float(
+                        totals["Imputed Hourly Ridership"] - totals["Raw Hourly Ridership"]
+                    ),
+                    "Workbook Ridership": workbook_total,
+                    "Canonical Hourly Ridership": canonical_hourly_total,
+                    "Workbook Difference": difference,
+                    "Workbook Difference Pct": difference_pct,
+                    "Quality Flag": _hourly_quality_flag(
+                        missing_full_days=len(missing_dates),
+                        min_present_hours=float(daily_hour_counts.min()),
+                        median_present_hours=float(daily_hour_counts.median()),
+                        workbook_difference_pct=difference_pct,
+                    ),
+                }
+            )
+
+    if not quality_rows:
+        return pd.DataFrame(
+            columns=[
+                "Period",
+                "Year",
+                "Month",
+                "Quality Flag",
+            ]
+        )
+
+    return pd.DataFrame(quality_rows).sort_values(["Year", "Month"]).reset_index(drop=True)
+
+
+def write_hourly_completeness_audit(
+    output_path=None,
+    raw_root=RAW,
+    validation_path=None,
+    hourly_summary_path=None,
+):
+    """Write the hourly OD completeness/imputation quality artifact."""
+    output_path = Path(output_path) if output_path else PROCESSED_HOURLY_COMPLETENESS_CSV
+    parquet_path = PROCESSED_HOURLY_COMPLETENESS_PARQUET
+    validation_path = Path(validation_path) if validation_path else PROCESSED_HOURLY_VALIDATION_CSV
+    hourly_summary_path = (
+        Path(hourly_summary_path)
+        if hourly_summary_path
+        else PROCESSED_HOURLY_STATION_MONTHLY_SUMMARY
+    )
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    validation = (
+        _read_processed_table(validation_path, PROCESSED_HOURLY_VALIDATION_PARQUET)
+        if validation_path.exists() or PROCESSED_HOURLY_VALIDATION_PARQUET.exists()
+        else None
+    )
+    hourly_summary = (
+        _read_processed_table(hourly_summary_path, PROCESSED_HOURLY_STATION_MONTHLY_SUMMARY_PARQUET)
+        if hourly_summary_path.exists() or PROCESSED_HOURLY_STATION_MONTHLY_SUMMARY_PARQUET.exists()
+        else None
+    )
+    audit = build_hourly_completeness_audit(
+        raw_root=raw_root,
+        validation=validation,
+        hourly_summary=hourly_summary,
+    )
+    _write_table_artifacts(audit, output_path, parquet_path)
+    return output_path
 
 
 def build_hourly_workbook_validation(raw_root=RAW, hourly_summary=None):
@@ -388,7 +545,10 @@ def build_hourly_workbook_validation(raw_root=RAW, hourly_summary=None):
         if hourly_month.empty:
             continue
 
-        comparison = workbook_summary.merge(
+        comparison = workbook_summary.drop(
+            columns=["station_id", "display_name"],
+            errors="ignore",
+        ).merge(
             hourly_month[["Entry Station", "Ridership", "Source File"]],
             on="Entry Station",
             how="outer",
@@ -402,6 +562,7 @@ def build_hourly_workbook_validation(raw_root=RAW, hourly_summary=None):
         comparison["Full Station Name"] = comparison["Full Station Name"].fillna(
             comparison["Entry Station"].map(STATION_MAPPING)
         )
+        comparison = _with_station_identity(comparison)
         comparison["Workbook Ridership"] = pd.to_numeric(
             comparison["Ridership Workbook"],
             errors="coerce",
@@ -415,42 +576,10 @@ def build_hourly_workbook_validation(raw_root=RAW, hourly_summary=None):
         comparison["Has Difference"] = comparison["Absolute Difference"] > 0
         comparison["Workbook Source File"] = str(workbook)
         comparison["Hourly Source File"] = comparison["Source File"]
-        validation_rows.append(
-            comparison[
-                [
-                    "Year",
-                    "Month",
-                    "Period",
-                    "Entry Station",
-                    "Full Station Name",
-                    "Workbook Ridership",
-                    "Hourly OD Ridership",
-                    "Difference",
-                    "Absolute Difference",
-                    "Has Difference",
-                    "Workbook Source File",
-                    "Hourly Source File",
-                ]
-            ]
-        )
+        validation_rows.append(comparison[VALIDATION_COLUMNS])
 
     if not validation_rows:
-        return pd.DataFrame(
-            columns=[
-                "Year",
-                "Month",
-                "Period",
-                "Entry Station",
-                "Full Station Name",
-                "Workbook Ridership",
-                "Hourly OD Ridership",
-                "Difference",
-                "Absolute Difference",
-                "Has Difference",
-                "Workbook Source File",
-                "Hourly Source File",
-            ]
-        )
+        return pd.DataFrame(columns=VALIDATION_COLUMNS)
 
     return pd.concat(validation_rows, ignore_index=True)
 
@@ -458,6 +587,7 @@ def build_hourly_workbook_validation(raw_root=RAW, hourly_summary=None):
 def write_hourly_workbook_validation(output_path=None, raw_root=RAW, hourly_summary_path=None):
     """Write station-level hourly OD versus workbook Total Trips validation."""
     output_path = Path(output_path) if output_path else PROCESSED_HOURLY_VALIDATION_CSV
+    parquet_path = PROCESSED_HOURLY_VALIDATION_PARQUET
     hourly_summary_path = (
         Path(hourly_summary_path)
         if hourly_summary_path
@@ -466,54 +596,31 @@ def write_hourly_workbook_validation(output_path=None, raw_root=RAW, hourly_summ
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     hourly_summary = (
-        pd.read_csv(hourly_summary_path)
-        if hourly_summary_path.exists()
+        _read_processed_table(hourly_summary_path, PROCESSED_HOURLY_STATION_MONTHLY_SUMMARY_PARQUET)
+        if hourly_summary_path.exists() or PROCESSED_HOURLY_STATION_MONTHLY_SUMMARY_PARQUET.exists()
         else build_hourly_station_monthly_summaries(raw_root)
     )
     validation = build_hourly_workbook_validation(raw_root, hourly_summary)
-    validation.to_csv(output_path, index=False)
+    _write_table_artifacts(validation, output_path, parquet_path)
     return output_path
 
 
 def _aggregate_hourly_od_file_to_monthly_stations(hourly_file):
     """Aggregate one hourly OD file into monthly station-entry ridership."""
     hourly_file = Path(hourly_file)
-    monthly_chunks = []
+    daily_hourly = _read_hourly_od_file_to_daily_hourly_stations(hourly_file)
+    daily_hourly = _impute_missing_full_days(daily_hourly)
 
-    for chunk in pd.read_csv(
-        hourly_file,
-        header=None,
-        names=HOURLY_OD_COLUMNS,
-        usecols=["Date", "ORIGIN", "Number of Exits"],
-        chunksize=500_000,
-    ):
-        chunk["Entry Station"] = chunk["ORIGIN"].map(normalize_hourly_od_station_code)
-        chunk = chunk[chunk["Entry Station"].isin(STATION_MAPPING)].copy()
-        if chunk.empty:
-            continue
-
-        chunk["Date"] = pd.to_datetime(chunk["Date"], errors="coerce")
-        chunk = chunk.dropna(subset=["Date"])
-        chunk["Year"] = chunk["Date"].dt.year.astype(int)
-        chunk["Month"] = chunk["Date"].dt.month.astype(int)
-        chunk["Ridership"] = pd.to_numeric(
-            chunk["Number of Exits"],
-            errors="coerce",
-        ).fillna(0)
-        monthly_chunks.append(
-            chunk.groupby(["Year", "Month", "Entry Station"], as_index=False)["Ridership"].sum()
-        )
-
-    if monthly_chunks:
+    if not daily_hourly.empty:
         hourly_summary = (
-            pd.concat(monthly_chunks, ignore_index=True)
-            .groupby(["Year", "Month", "Entry Station"], as_index=False)["Ridership"]
+            daily_hourly.groupby(["Year", "Month", "Entry Station"], as_index=False)["Ridership"]
             .sum()
         )
     else:
         hourly_summary = pd.DataFrame(columns=["Year", "Month", "Entry Station", "Ridership"])
 
     hourly_summary["Full Station Name"] = hourly_summary["Entry Station"].map(STATION_MAPPING)
+    hourly_summary = _with_station_identity(hourly_summary)
     hourly_summary["Period"] = (
         hourly_summary["Year"].astype(str)
         + "-"
@@ -521,18 +628,130 @@ def _aggregate_hourly_od_file_to_monthly_stations(hourly_file):
     )
     hourly_summary["Source Type"] = "hourly_od"
     hourly_summary["Source File"] = str(hourly_file)
-    return hourly_summary[
-        [
-            "Year",
-            "Month",
-            "Entry Station",
-            "Ridership",
-            "Full Station Name",
-            "Period",
-            "Source Type",
-            "Source File",
+    return hourly_summary[STATION_SUMMARY_COLUMNS]
+
+
+def _read_hourly_od_file_to_daily_hourly_stations(hourly_file):
+    """Read one hourly OD CSV into station/hour totals for imputation/audit."""
+    hourly_file = Path(hourly_file)
+    hourly_chunks = []
+
+    for chunk in pd.read_csv(
+        hourly_file,
+        header=None,
+        names=HOURLY_OD_COLUMNS,
+        usecols=["Date", "Hour", "ORIGIN", "Number of Exits"],
+        chunksize=500_000,
+    ):
+        chunk["Entry Station"] = chunk["ORIGIN"].map(normalize_hourly_od_station_code)
+        chunk = chunk[chunk["Entry Station"].isin(STATION_MAPPING)].copy()
+        if chunk.empty:
+            continue
+
+        chunk["Date"] = pd.to_datetime(chunk["Date"], errors="coerce").dt.normalize()
+        chunk["Hour"] = pd.to_numeric(chunk["Hour"], errors="coerce")
+        chunk["Ridership"] = pd.to_numeric(
+            chunk["Number of Exits"],
+            errors="coerce",
+        ).fillna(0)
+        chunk = chunk.dropna(subset=["Date", "Hour"])
+        chunk["Hour"] = chunk["Hour"].astype(int)
+        chunk["Year"] = chunk["Date"].dt.year.astype(int)
+        chunk["Month"] = chunk["Date"].dt.month.astype(int)
+        hourly_chunks.append(
+            chunk.groupby(
+                ["Date", "Year", "Month", "Hour", "Entry Station"],
+                as_index=False,
+            )["Ridership"].sum()
+        )
+
+    if not hourly_chunks:
+        return pd.DataFrame(
+            columns=["Date", "Year", "Month", "Hour", "Entry Station", "Ridership"]
+        )
+
+    return (
+        pd.concat(hourly_chunks, ignore_index=True)
+        .groupby(["Date", "Year", "Month", "Hour", "Entry Station"], as_index=False)["Ridership"]
+        .sum()
+    )
+
+
+def _impute_missing_full_days(daily_hourly):
+    """Fill missing full calendar days using same-month hourly station means."""
+    if daily_hourly.empty:
+        return daily_hourly.copy()
+
+    imputed_parts = [daily_hourly.copy()]
+
+    for (year, month), period_rows in daily_hourly.groupby(["Year", "Month"]):
+        expected_dates = _expected_period_dates(year, month)
+        observed_dates = set(pd.to_datetime(period_rows["Date"]).dt.normalize())
+        missing_dates = [
+            date
+            for date in expected_dates
+            if date not in observed_dates
         ]
-    ]
+        if not missing_dates:
+            continue
+
+        source_rows = period_rows.copy()
+        source_rows["Weekday"] = source_rows["Date"].dt.dayofweek
+        source_rows["Day Type"] = source_rows["Weekday"].map(
+            lambda weekday: "weekday" if weekday < 5 else "weekend"
+        )
+        weekday_means = source_rows.groupby(
+            ["Weekday", "Hour", "Entry Station"],
+            as_index=False,
+        )["Ridership"].mean().rename(columns={"Ridership": "Weekday Mean"})
+        day_type_means = source_rows.groupby(
+            ["Day Type", "Hour", "Entry Station"],
+            as_index=False,
+        )["Ridership"].mean().rename(columns={"Ridership": "Day Type Mean"})
+        hour_means = source_rows.groupby(
+            ["Hour", "Entry Station"],
+            as_index=False,
+        )["Ridership"].mean().rename(columns={"Ridership": "Hour Mean"})
+        stations = sorted(source_rows["Entry Station"].dropna().unique())
+        hours = list(range(24))
+        templates = []
+
+        for missing_date in missing_dates:
+            template = pd.MultiIndex.from_product(
+                [[missing_date], hours, stations],
+                names=["Date", "Hour", "Entry Station"],
+            ).to_frame(index=False)
+            template["Year"] = int(year)
+            template["Month"] = int(month)
+            template["Weekday"] = missing_date.dayofweek
+            template["Day Type"] = "weekday" if missing_date.dayofweek < 5 else "weekend"
+            templates.append(template)
+
+        imputed_rows = pd.concat(templates, ignore_index=True)
+        imputed_rows = imputed_rows.merge(
+            weekday_means,
+            on=["Weekday", "Hour", "Entry Station"],
+            how="left",
+        ).merge(
+            day_type_means,
+            on=["Day Type", "Hour", "Entry Station"],
+            how="left",
+        ).merge(
+            hour_means,
+            on=["Hour", "Entry Station"],
+            how="left",
+        )
+        imputed_rows["Ridership"] = (
+            imputed_rows["Weekday Mean"]
+            .combine_first(imputed_rows["Day Type Mean"])
+            .combine_first(imputed_rows["Hour Mean"])
+            .fillna(0)
+        )
+        imputed_parts.append(
+            imputed_rows[["Date", "Year", "Month", "Hour", "Entry Station", "Ridership"]]
+        )
+
+    return pd.concat(imputed_parts, ignore_index=True)
 
 
 def build_monthly_station_ridership_summaries(raw_root=RAW, hourly_summary=None):
@@ -556,26 +775,15 @@ def build_monthly_station_ridership_summaries(raw_root=RAW, hourly_summary=None)
     hourly_periods = set()
     if not hourly_summary.empty:
         hourly_summary = hourly_summary.copy()
+        if {"station_id", "display_name"} - set(hourly_summary.columns):
+            hourly_summary = _with_station_identity(hourly_summary)
         hourly_summary["Year"] = hourly_summary["Year"].astype(int)
         hourly_summary["Month"] = hourly_summary["Month"].astype(int)
         hourly_periods = {
             (int(row["Year"]), int(row["Month"]))
             for _, row in hourly_summary[["Year", "Month"]].drop_duplicates().iterrows()
         }
-        monthly_summaries.append(
-            hourly_summary[
-                [
-                    "Year",
-                    "Month",
-                    "Entry Station",
-                    "Ridership",
-                    "Full Station Name",
-                    "Period",
-                    "Source Type",
-                    "Source File",
-                ]
-            ]
-        )
+        monthly_summaries.append(hourly_summary[STATION_SUMMARY_COLUMNS])
 
     for workbook in discover_ridership_workbooks(raw_root):
         year, month = parse_ridership_period(workbook)
@@ -596,20 +804,9 @@ def build_monthly_station_ridership_summaries(raw_root=RAW, hourly_summary=None)
         monthly_summaries.append(station_summary)
 
     if not monthly_summaries:
-        return pd.DataFrame(
-            columns=[
-                "Year",
-                "Month",
-                "Entry Station",
-                "Ridership",
-                "Full Station Name",
-                "Period",
-                "Source Type",
-                "Source File",
-            ]
-        )
+        return pd.DataFrame(columns=STATION_SUMMARY_COLUMNS)
 
-    return pd.concat(monthly_summaries, ignore_index=True)
+    return pd.concat(monthly_summaries, ignore_index=True)[STATION_SUMMARY_COLUMNS]
 
 
 def write_monthly_station_ridership_summaries(
@@ -631,16 +828,26 @@ def write_monthly_station_ridership_summaries(
         Path to the written summary CSV.
     """
     output_path = Path(output_path) if output_path else monthly_station_summary_path()
+    parquet_path = monthly_station_summary_parquet_path()
     output_path.parent.mkdir(parents=True, exist_ok=True)
     if hourly_summary is None and hourly_summary_path is not None:
-        hourly_summary = pd.read_csv(hourly_summary_path)
-    build_monthly_station_ridership_summaries(raw_root, hourly_summary).to_csv(output_path, index=False)
+        hourly_summary = _read_processed_table(
+            hourly_summary_path,
+            PROCESSED_HOURLY_STATION_MONTHLY_SUMMARY_PARQUET,
+        )
+    monthly_summary = build_monthly_station_ridership_summaries(raw_root, hourly_summary)
+    _write_table_artifacts(monthly_summary, output_path, parquet_path)
     return output_path
 
 
 def monthly_station_summary_path():
-    """Return the standard processed monthly ridership summary path."""
-    return PROCESSED / "station_ridership_monthly_summary.csv"
+    """Return the standard processed monthly ridership CSV path."""
+    return PROCESSED_STATION_RIDERSHIP_MONTHLY_SUMMARY_CSV
+
+
+def monthly_station_summary_parquet_path():
+    """Return the standard processed monthly ridership Parquet path."""
+    return PROCESSED_STATION_RIDERSHIP_MONTHLY_SUMMARY_PARQUET
 
 
 def load_monthly_station_ridership_summary(processed_path=None):
@@ -650,13 +857,14 @@ def load_monthly_station_ridership_summary(processed_path=None):
     workbooks or hourly OD CSVs. Regenerate it with `scripts/prepare_data.py`.
     """
     processed_path = Path(processed_path) if processed_path else monthly_station_summary_path()
-    if not processed_path.exists():
+    parquet_path = monthly_station_summary_parquet_path() if processed_path == monthly_station_summary_path() else None
+    if not processed_path.exists() and not (parquet_path and parquet_path.exists()):
         raise FileNotFoundError(
             f"Processed ridership summary not found: {processed_path}. "
             "Run `python scripts/prepare_data.py` to regenerate it."
         )
 
-    monthly_summary = pd.read_csv(processed_path)
+    monthly_summary = _read_processed_table(processed_path, parquet_path)
     monthly_summary["Year"] = monthly_summary["Year"].astype(int)
     monthly_summary["Month"] = monthly_summary["Month"].astype(int)
     monthly_summary["Ridership"] = pd.to_numeric(
@@ -692,10 +900,15 @@ def attach_station_ridership(stations_gdf, station_ridership):
     those rows should be audited separately before interpreting zero as true
     zero ridership.
     """
+    ridership_name_column = (
+        "display_name"
+        if "display_name" in station_ridership.columns
+        else "Full Station Name"
+    )
     stations_with_ridership = stations_gdf.merge(
         station_ridership,
         left_on="Name",
-        right_on="Full Station Name",
+        right_on=ridership_name_column,
         how="left",
     )
     stations_with_ridership["Ridership"] = pd.to_numeric(
@@ -854,6 +1067,109 @@ def _year_from_ridership_path(path):
 
 
 # region Helpers
+def _with_station_identity(station_summary):
+    """Attach canonical `station_id` and `display_name` to legacy-code rows."""
+    station_summary = station_summary.drop(
+        columns=["station_id", "display_name"],
+        errors="ignore",
+    )
+    return add_station_identity(
+        station_summary,
+        code_column="Entry Station",
+        source_system="legacy_app_code",
+    )
+
+
+def _write_table_artifacts(dataframe, csv_path, parquet_path):
+    """Write one processed table as CSV compatibility plus Parquet runtime data."""
+    csv_path = Path(csv_path)
+    parquet_path = Path(parquet_path)
+    csv_path.parent.mkdir(parents=True, exist_ok=True)
+    parquet_path.parent.mkdir(parents=True, exist_ok=True)
+    dataframe.to_csv(csv_path, index=False)
+    dataframe.to_parquet(parquet_path, index=False)
+
+
+def _read_processed_table(csv_path, parquet_path=None):
+    """Read Parquet when present, falling back to CSV for compatibility."""
+    csv_path = Path(csv_path)
+    parquet_path = Path(parquet_path) if parquet_path else csv_path.with_suffix(".parquet")
+
+    if parquet_path.exists():
+        return pd.read_parquet(parquet_path)
+    if csv_path.exists():
+        return pd.read_csv(csv_path)
+    raise FileNotFoundError(f"No processed table found at {parquet_path} or {csv_path}.")
+
+
+def _expected_period_dates(year, month):
+    """Return every calendar date for one year/month period."""
+    year = int(year)
+    month = int(month)
+    return pd.date_range(
+        f"{year}-{month:02d}-01",
+        periods=monthrange(year, month)[1],
+        freq="D",
+    )
+
+
+def _period_validation_totals(validation):
+    """Return workbook/hourly validation totals keyed by `YYYY-MM` period."""
+    if validation is None or validation.empty:
+        return {}
+
+    totals = (
+        validation.groupby("Period", as_index=False)[
+            ["Workbook Ridership", "Hourly OD Ridership"]
+        ]
+        .sum()
+    )
+    return {
+        row["Period"]: {
+            "Workbook Ridership": float(row["Workbook Ridership"]),
+            "Hourly OD Ridership": float(row["Hourly OD Ridership"]),
+        }
+        for _, row in totals.iterrows()
+    }
+
+
+def _period_hourly_summary_totals(hourly_summary):
+    """Return canonical hourly summary totals keyed by `YYYY-MM` period."""
+    if hourly_summary is None or hourly_summary.empty:
+        return {}
+
+    summary = hourly_summary.copy()
+    if "Period" not in summary.columns:
+        summary["Period"] = (
+            summary["Year"].astype(int).astype(str)
+            + "-"
+            + summary["Month"].astype(int).astype(str).str.zfill(2)
+        )
+    totals = summary.groupby("Period", as_index=False)["Ridership"].sum()
+    return {
+        row["Period"]: float(row["Ridership"])
+        for _, row in totals.iterrows()
+    }
+
+
+def _hourly_quality_flag(
+    missing_full_days,
+    min_present_hours,
+    median_present_hours,
+    workbook_difference_pct,
+):
+    """Classify the period-level hourly source quality issue, if any."""
+    if missing_full_days:
+        return "missing_full_days_imputed"
+    if median_present_hours <= 18:
+        return "covid_service_hours"
+    if min_present_hours < max(1, median_present_hours * 0.6):
+        return "partial_low_hour_day"
+    if workbook_difference_pct is not None and abs(workbook_difference_pct) > 0.05:
+        return "complete_hours_source_discrepancy"
+    return "clean_or_minor_difference"
+
+
 def _normalize_station_summary_columns(station_summary):
     """Return period-filtered summary rows with runtime-compatible columns."""
     station_summary = station_summary.copy()
@@ -866,7 +1182,18 @@ def _normalize_station_summary_columns(station_summary):
     if "Full Station Name" not in station_summary.columns:
         station_summary["Full Station Name"] = station_summary["Entry Station"].map(STATION_MAPPING)
 
-    return station_summary[["Entry Station", "Ridership", "Full Station Name"]]
+    if {"station_id", "display_name"} - set(station_summary.columns):
+        station_summary = _with_station_identity(station_summary)
+
+    return station_summary[
+        [
+            "Entry Station",
+            "station_id",
+            "Ridership",
+            "Full Station Name",
+            "display_name",
+        ]
+    ]
 
 
 def _normalize_station_label(name):

@@ -10,18 +10,35 @@ This project expects raw BART data files under `data/raw/`. The raw folder is in
 data/processed/stations.geojson
 data/processed/bart_routes.geojson
 data/processed/station_ridership_monthly_summary.csv
+data/processed/station_ridership_monthly_summary.parquet
 ```
 
 The hourly-derived validation outputs are also processed artifacts:
 
 ```text
 data/processed/hourly_od_station_monthly_summary.csv
+data/processed/hourly_od_station_monthly_summary.parquet
 data/processed/hourly_od_station_monthly/YYYY-MM.csv
+data/processed/hourly_od_station_monthly_parquet/YYYY-MM.parquet
 data/processed/hourly_od_total_trips_validation.csv
+data/processed/hourly_od_total_trips_validation.parquet
+data/processed/hourly_od_completeness_audit.csv
+data/processed/hourly_od_completeness_audit.parquet
 ```
 
 Raw station files, route files, ridership workbooks, and hourly OD CSVs are not
 required for normal app runtime when these processed files are present.
+
+The runtime contract is:
+
+```text
+Dash app: reads data/processed/* and data/reference/*
+prepare_data.py: reads data/raw/* and writes data/processed/*
+notebooks: audit processed outputs and may inspect raw files during investigation
+```
+
+Where both CSV and Parquet versions exist, runtime loaders prefer Parquet and
+fall back to CSV for compatibility.
 
 ## Raw Files Needed To Regenerate Processed Data
 
@@ -42,8 +59,17 @@ data/raw/Hourly_OD/date-hour-soo-dest-2019.csv
 Hourly origin-destination CSVs are aggregated into monthly station-entry totals
 by origin station. These hourly-derived summaries are the app's canonical
 ridership source where available. Workbook `Total Trips` / `Total Trips OD`
-values are used as validation benchmarks and as fallback data for periods
-without hourly OD coverage.
+values are validation benchmarks and fallback data for periods without hourly
+OD coverage.
+
+If an hourly OD file is missing a full calendar day, `scripts/prepare_data.py`
+imputes that day at the hourly station level using same-month hourly station
+patterns before writing monthly totals. The imputed periods and major
+source-definition discrepancies are documented in:
+
+```text
+data/processed/hourly_od_completeness_audit.csv
+```
 
 ```text
 data/raw/Hourly_OD/date-hour-soo-dest-YYYY.csv
@@ -94,9 +120,31 @@ That script writes files under:
 data/processed/
 ```
 
+It writes CSV files for inspection/compatibility and Parquet files for faster
+runtime loading and future time-lapse/modeling features.
+
+To benchmark the impact of those processed summaries, run:
+
+```powershell
+python scripts/benchmark_data_loading.py --year 2025 --month 5 --runs 3
+```
+
+The benchmark compares raw hourly CSV aggregation, processed CSV loading, and
+processed Parquet loading, then writes:
+
+```text
+data/processed/benchmark_data_loading.csv
+```
+
 The validation CSV is station-level. `Has Difference = True` means the station's
 hourly OD monthly total and workbook monthly total are not exactly equal for
 that period.
+
+The completeness audit is period-level. `missing_full_days_imputed` means the
+processed monthly ridership includes hourly imputation for missing source days.
+`complete_hours_source_discrepancy` means the hourly data appears complete, but
+differs materially from the workbook benchmark; the hourly OD source remains
+canonical for those periods.
 
 ## Option 2: Use The Full Optional CSV
 

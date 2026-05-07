@@ -27,8 +27,13 @@ from src.data_loader import (
 )
 from src.config import (
     HOURLY_OD_2018_CSV,
+    PROCESSED_HOURLY_COMPLETENESS_CSV,
+    PROCESSED_HOURLY_COMPLETENESS_PARQUET,
     PROCESSED_HOURLY_STATION_MONTHLY_SUMMARY,
+    PROCESSED_HOURLY_STATION_MONTHLY_SUMMARY_PARQUET,
     PROCESSED_HOURLY_VALIDATION_CSV,
+    PROCESSED_HOURLY_VALIDATION_PARQUET,
+    PROCESSED_STATION_RIDERSHIP_MONTHLY_SUMMARY_PARQUET,
     RIDERSHIP_2018_DIR,
 )
 from src.route_builder import (
@@ -170,8 +175,10 @@ class RidershipWorkbookTests(unittest.TestCase):
                 "Year",
                 "Month",
                 "Entry Station",
+                "station_id",
                 "Ridership",
                 "Full Station Name",
+                "display_name",
                 "Period",
                 "Source Type",
                 "Source File",
@@ -191,6 +198,25 @@ class RidershipWorkbookTests(unittest.TestCase):
         ]
         self.assertEqual(9785965, int(january_2018["Ridership"].sum()))
 
+    def test_processed_parquet_artifacts_exist_and_match_csv_rows(self):
+        artifact_pairs = (
+            (
+                PROCESSED_HOURLY_STATION_MONTHLY_SUMMARY,
+                PROCESSED_HOURLY_STATION_MONTHLY_SUMMARY_PARQUET,
+            ),
+            (PROCESSED_HOURLY_VALIDATION_CSV, PROCESSED_HOURLY_VALIDATION_PARQUET),
+            (PROCESSED_HOURLY_COMPLETENESS_CSV, PROCESSED_HOURLY_COMPLETENESS_PARQUET),
+        )
+
+        for csv_path, parquet_path in artifact_pairs:
+            csv_data = pd.read_csv(csv_path)
+            parquet_data = pd.read_parquet(parquet_path)
+
+            self.assertTrue(parquet_path.exists())
+            self.assertEqual(len(csv_data), len(parquet_data))
+
+        self.assertTrue(PROCESSED_STATION_RIDERSHIP_MONTHLY_SUMMARY_PARQUET.exists())
+
     def test_hourly_workbook_validation_artifact_flags_station_differences(self):
         validation = pd.read_csv(PROCESSED_HOURLY_VALIDATION_CSV)
 
@@ -200,6 +226,8 @@ class RidershipWorkbookTests(unittest.TestCase):
                 "Month",
                 "Period",
                 "Entry Station",
+                "station_id",
+                "display_name",
                 "Workbook Ridership",
                 "Hourly OD Ridership",
                 "Difference",
@@ -213,6 +241,59 @@ class RidershipWorkbookTests(unittest.TestCase):
         )
         self.assertTrue(validation["Has Difference"].any())
 
+    def test_hourly_completeness_artifact_documents_quality_flags(self):
+        quality = pd.read_csv(PROCESSED_HOURLY_COMPLETENESS_CSV)
+
+        self.assertTrue(
+            {
+                "Period",
+                "Missing Full Days",
+                "Missing Full Day List",
+                "Raw Hourly Ridership",
+                "Imputed Hourly Ridership",
+                "Imputed Ridership Added",
+                "Quality Flag",
+            }
+            <= set(quality.columns)
+        )
+        self.assertTrue(
+            (quality["Quality Flag"] == "missing_full_days_imputed").any()
+        )
+        self.assertGreater(
+            float(
+                quality.loc[
+                    quality["Quality Flag"] == "missing_full_days_imputed",
+                    "Imputed Ridership Added",
+                ].sum()
+            ),
+            0,
+        )
+
+    def test_data_loading_benchmark_artifact_has_expected_workflows(self):
+        benchmark_path = PROJECT_ROOT / "data" / "processed" / "benchmark_data_loading.csv"
+        benchmark = pd.read_csv(benchmark_path)
+
+        self.assertTrue(
+            {
+                "workflow",
+                "period",
+                "file_size_mb",
+                "rows_read",
+                "median_elapsed_seconds",
+                "speedup_vs_raw",
+                "status",
+            }
+            <= set(benchmark.columns)
+        )
+        self.assertEqual(
+            {
+                "raw_hourly_od",
+                "processed_csv_summary",
+                "processed_parquet_summary",
+            },
+            set(benchmark["workflow"]),
+        )
+
     def test_ridership_period_parser_and_finder(self):
         workbook = find_ridership_workbook(2025, 5)
 
@@ -222,8 +303,18 @@ class RidershipWorkbookTests(unittest.TestCase):
         station_summary = load_station_ridership_for_period(2025, 5)
 
         self.assertFalse(station_summary.empty)
-        self.assertTrue({"Entry Station", "Ridership", "Full Station Name"} <= set(station_summary.columns))
+        self.assertTrue(
+            {
+                "Entry Station",
+                "station_id",
+                "Ridership",
+                "Full Station Name",
+                "display_name",
+            }
+            <= set(station_summary.columns)
+        )
         self.assertTrue({"ML", "BE"} <= set(station_summary["Entry Station"]))
+        self.assertTrue({"mlpt", "bery"} <= set(station_summary["station_id"]))
 
     def test_january_2018_hourly_od_fallback_matches_monthly_total(self):
         station_summary = load_hourly_station_ridership_for_month(2018, 1, HOURLY_OD_2018_CSV)
@@ -635,6 +726,22 @@ class DashRouteYearTests(unittest.TestCase):
 
         self.assertFalse(actual.empty)
         self.assertAlmostEqual(float(expected["Ridership"].sum()), float(actual["Ridership"].sum()))
+
+    def test_app_entrypoint_does_not_reference_raw_inputs(self):
+        app_source = (PROJECT_ROOT / "app.py").read_text(encoding="utf-8")
+        forbidden_runtime_tokens = (
+            "data/raw",
+            "RAW",
+            "BART_STATIONS_DIR",
+            "BART_ROUTES_GDB",
+            "HOURLY_OD_DIR",
+            "HOURLY_OD_2018_CSV",
+            "RIDERSHIP_2018_DIR",
+            "read_excel",
+        )
+
+        for token in forbidden_runtime_tokens:
+            self.assertNotIn(token, app_source)
 
 
 if __name__ == "__main__":

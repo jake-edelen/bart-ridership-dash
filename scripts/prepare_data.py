@@ -17,6 +17,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from src.config import BART_ROUTES_GDB, BART_STATIONS_DIR, PROCESSED  # noqa: E402
 from src.data_loader import (  # noqa: E402
+    write_hourly_completeness_audit,
     write_hourly_station_monthly_summaries,
     write_hourly_workbook_validation,
     write_monthly_station_ridership_summaries,
@@ -49,6 +50,12 @@ def main():
 
     validation_path = write_hourly_workbook_validation()
     print(f"Hourly OD validation written to {validation_path}")
+
+    quality_path = write_hourly_completeness_audit(
+        validation_path=validation_path,
+        hourly_summary_path=hourly_summary_path,
+    )
+    print(f"Hourly OD completeness audit written to {quality_path}")
 
     print(f"Processed data written to {PROCESSED}")
 

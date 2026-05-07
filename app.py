@@ -79,7 +79,7 @@ def _station_ridership_for_period(year, month):
 def _stations_for_ridership_period(year, month):
     """Return station geometry with ridership values for one monthly period."""
     base_stations = stations_gdf.drop(
-        columns=["Entry Station", "Ridership", "Full Station Name"],
+        columns=["Entry Station", "Ridership", "Full Station Name", "display_name", "station_id"],
         errors="ignore",
     )
     return attach_station_ridership(
@@ -96,7 +96,7 @@ def _ridership_period_label(year, month):
 def _station_options_for_ridership_period(year, month):
     """Build station dropdown options from stations present in a ridership period."""
     station_names = (
-        _station_ridership_for_period(year, month)["Full Station Name"]
+        _station_ridership_for_period(year, month)["display_name"]
         .dropna()
         .unique()
     )
@@ -394,14 +394,11 @@ def update_maps(
     period_label = _ridership_period_label(ridership_year, ridership_month)
     selected_station_ridership = _station_ridership_for_period(ridership_year, ridership_month)
     stations_for_period = _stations_for_ridership_period(ridership_year, ridership_month)
-    reverse_mapping = {v: k for k, v in station_mapping.items()}
 
     if station1 and station2:
-        station1_abbr = reverse_mapping.get(station1)
-        station2_abbr = reverse_mapping.get(station2)
         filtered_stations = stations_for_period[stations_for_period["Name"].isin([station1, station2])]
         filtered_ridership = selected_station_ridership[
-            selected_station_ridership["Entry Station"].isin([station1_abbr, station2_abbr])
+            selected_station_ridership["display_name"].isin([station1, station2])
         ]
     else:
         filtered_stations = stations_for_period
@@ -662,7 +659,11 @@ def _build_ridership_bar_chart(
 
     chart_data = filtered_ridership.copy()
     chart_data["Ridership"] = pd.to_numeric(chart_data["Ridership"], errors="coerce").fillna(0)
-    chart_data["Station"] = chart_data["Full Station Name"].fillna(chart_data["Entry Station"])
+    chart_data["Station"] = (
+        chart_data["display_name"]
+        .fillna(chart_data["Full Station Name"])
+        .fillna(chart_data["Entry Station"])
+    )
     color_min, color_max = color_range or _ridership_color_range(chart_data["Ridership"])
 
     if len(chart_data) > 2:

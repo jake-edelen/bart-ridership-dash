@@ -7,3 +7,4 @@ geopandas
 shapely
 openpyxl
 duckdb
+pyarrow

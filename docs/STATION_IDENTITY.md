@@ -44,6 +44,19 @@ treated as open for the app's 2018-2025 analysis window.
 reference table can be joined back to station point geometry without relying on
 display text alone.
 
+`data/reference/station_aliases.csv` is the source-code crosswalk used by data
+prep and audit workflows. Its columns are:
+
+```text
+source_system
+raw_code
+station_id
+```
+
+This table intentionally stays compact. Source-specific names, counts,
+validation deltas, and mismatch flags belong in the audit notebook, not in the
+reference table.
+
 ## Alias Handling
 
 Raw data sources should normalize into `station_id` before aggregation.
