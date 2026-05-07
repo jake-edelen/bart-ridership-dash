@@ -146,21 +146,31 @@ processed monthly ridership includes hourly imputation for missing source days.
 differs materially from the workbook benchmark; the hourly OD source remains
 canonical for those periods.
 
-## Option 2: Use The Full Optional CSV
+## Full Hourly OD Files
 
-Download the full CSV from Google Drive:
+Full hourly OD files are optional for normal app runtime because processed
+summary artifacts are tracked in the repository. They are only needed if you
+want to regenerate processed data, rebuild validation artifacts, or extend the
+project toward hourly time-lapse/modeling features.
 
 ```text
-PASTE_GOOGLE_DRIVE_LINK_HERE
+data/raw/Hourly_OD/date-hour-soo-dest-YYYY.csv
 ```
 
-After downloading it, place it at exactly this path:
+Place each annual file under `data/raw/Hourly_OD/` using the original naming
+pattern:
 
 ```text
 data/raw/Hourly_OD/date-hour-soo-dest-2018.csv
+data/raw/Hourly_OD/date-hour-soo-dest-2019.csv
+...
+data/raw/Hourly_OD/date-hour-soo-dest-2025.csv
 ```
 
-Keep the filename unchanged if you add future analysis code that reads the full hourly origin-destination CSV.
+The full raw files are intentionally not committed to Git because they are too
+large for normal repository use. If distributing the full raw inputs later,
+attach them through GitHub Releases, cloud storage, or another external data
+hosting flow and keep this README pointed at the processed artifacts by default.
 
 ## Why The Full Data Is Not In Git
 
