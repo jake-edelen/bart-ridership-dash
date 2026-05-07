@@ -40,6 +40,9 @@ Hourly OD files are the canonical ridership source where available. Workbook Tot
 ## Benchmarking
 Run `python scripts/benchmark_data_loading.py` to compare raw hourly CSV aggregation against processed CSV and processed Parquet summaries. Results are written to `data/processed/benchmark_data_loading.csv` for resume/portfolio metrics.
 
+## Tests
+Automated tests cover temporal route logic, station-code normalization, ridership aggregation, processed artifacts, geometry coverage, and Dash callback behavior. The suite is split by project area under `tests/` so data, geometry, service-pattern, and UI regressions are easier to isolate.
+
 ## Tech Stack
 Python, Dash, Plotly, GeoPandas, Shapely, Pandas.
 
