@@ -1,0 +1,36 @@
+#bart-map-colored .modebar-container {
+    top: -34px !important;
+}
+
+#bart-map-colored .js-plotly-plot .legend .traces,
+#bart-map-black .js-plotly-plot .legend .traces {
+    cursor: pointer;
+}
+
+#bart-map-colored .js-plotly-plot .legend .traces .legendtoggle,
+#bart-map-black .js-plotly-plot .legend .traces .legendtoggle {
+    fill: rgba(255, 255, 255, 0.92);
+    stroke: rgba(154, 166, 178, 0.55);
+    stroke-width: 1px;
+    pointer-events: all;
+}
+
+#bart-map-colored .js-plotly-plot .legend .traces:hover .legendtoggle,
+#bart-map-black .js-plotly-plot .legend .traces:hover .legendtoggle {
+    fill: rgba(232, 241, 250, 0.98);
+    stroke: rgba(63, 110, 171, 0.8);
+    stroke-width: 1.5px;
+}
+
+#bart-map-colored .js-plotly-plot .legend .traces:hover .legendtext,
+#bart-map-black .js-plotly-plot .legend .traces:hover .legendtext {
+    font-weight: 400;
+    fill: #1f5f9f !important;
+}
+
+#bart-map-colored .js-plotly-plot .legend .legendtext,
+#bart-map-black .js-plotly-plot .legend .legendtext,
+#bart-map-colored .js-plotly-plot .legend .legendlines,
+#bart-map-black .js-plotly-plot .legend .legendlines {
+    pointer-events: none;
+}

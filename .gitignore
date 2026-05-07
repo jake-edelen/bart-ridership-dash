@@ -11,6 +11,22 @@ data/raw/*
 !data/raw/.gitkeep
 data/processed/*
 !data/processed/.gitkeep
+!data/processed/stations.geojson
+!data/processed/bart_routes.geojson
+!data/processed/station_ridership_monthly_summary.csv
+!data/processed/hourly_od_station_monthly/
+!data/processed/hourly_od_station_monthly/*.csv
+!data/processed/hourly_od_station_monthly_parquet/
+!data/processed/hourly_od_station_monthly_parquet/*.parquet
+!data/processed/hourly_od_station_monthly_summary.csv
+!data/processed/hourly_od_station_monthly_summary.parquet
+!data/processed/hourly_od_total_trips_validation.csv
+!data/processed/hourly_od_total_trips_validation.parquet
+!data/processed/hourly_od_completeness_audit.csv
+!data/processed/hourly_od_completeness_audit.parquet
+!data/processed/station_ridership_monthly_summary.parquet
+!data/processed/benchmark_data_loading.csv
+tmp*/
 
 # assets binaries (keep images, ignore design source if any)
 assets/*.psd

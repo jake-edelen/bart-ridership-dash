@@ -1,0 +1,4 @@
+workflow,period,runs,file_path,file_size_mb,rows_read,result_rows,ridership_total,median_elapsed_seconds,min_elapsed_seconds,max_elapsed_seconds,status,speedup_vs_raw
+raw_hourly_od,2025-05,3,data/raw/Hourly_OD/date-hour-soo-dest-2025.csv,236.779461,9143257,50,4775431.0,4.9655041000805795,4.920711299870163,5.047125299926847,ok,1.0
+processed_csv_summary,2025-05,3,data/processed/station_ridership_monthly_summary.csv,0.859655,4755,50,4775431.0,0.014202399645000696,0.013885200023651123,0.017243099864572287,ok,349.6243046384389
+processed_parquet_summary,2025-05,3,data/processed/station_ridership_monthly_summary.parquet,0.042393,4755,50,4775431.0,0.006415700074285269,0.003657599911093712,0.027064800262451172,ok,773.9613826373818
