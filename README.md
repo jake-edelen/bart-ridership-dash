@@ -1,6 +1,6 @@
 ﻿# BART Ridership Dashboard
 
-![App Screenshot](assets/screenshot.PNG)
+![App Screenshot](assets/dash_app_capture.PNG)
 
 Interactive Dash + Plotly app with GeoPandas/Shapely maps to explore BART ridership and routes.
 
