@@ -38,7 +38,7 @@ Processed ridership tables are exported as both CSV and Parquet. Runtime loaders
 Hourly OD files are the canonical ridership source where available. Workbook Total Trips files are validation benchmarks and fallback inputs only. Missing full hourly OD days are imputed during preprocessing, and imputed periods plus major source-definition discrepancies are documented in `data/processed/hourly_od_completeness_audit.csv`.
 
 ## Benchmarking
-Run `python scripts/benchmark_data_loading.py` to compare raw hourly CSV aggregation against processed CSV and processed Parquet summaries. Results are written to `data/processed/benchmark_data_loading.csv` for resume/portfolio metrics.
+Run `python scripts/benchmark_data_loading.py --suite representative --runs 1` to compare raw hourly CSV aggregation against processed CSV and processed Parquet summaries across representative station-ridership queries. Results are written to `data/processed/benchmark_data_loading.csv` for resume/portfolio metrics.
 
 ## Tests
 Automated tests cover temporal route logic, station-code normalization, ridership aggregation, processed artifacts, geometry coverage, and Dash callback behavior. The suite is split by project area under `tests/` so data, geometry, service-pattern, and UI regressions are easier to isolate.

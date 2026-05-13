@@ -126,11 +126,12 @@ runtime loading and future time-lapse/modeling features.
 To benchmark the impact of those processed summaries, run:
 
 ```powershell
-python scripts/benchmark_data_loading.py --year 2025 --month 5 --runs 3
+python scripts/benchmark_data_loading.py --suite representative --runs 1
 ```
 
-The benchmark compares raw hourly CSV aggregation, processed CSV loading, and
-processed Parquet loading, then writes:
+The representative benchmark compares raw hourly CSV aggregation, processed CSV
+loading, and processed Parquet loading across several station-ridership query
+shapes, then writes:
 
 ```text
 data/processed/benchmark_data_loading.csv
